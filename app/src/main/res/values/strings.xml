@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">صيّاد الصور</string>
+    <string name="search_hint">ابحث عن صور…</string>
+    <string name="search_button">بحث</string>
+    <string name="empty_state">اكتب اسمًا واضغط «بحث». (البحث الحقيقي في المرحلة الثانية)</string>
+</resources>
