@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -5,7 +7,7 @@ plugins {
 }
 
 // مفتاح Pexels: من متغير بيئة (GitHub Secret) أو local.properties. لا يُكتب في الشيفرة.
-val localProps = java.util.Properties().apply {
+val localProps = Properties().apply {
     val f = rootProject.file("local.properties")
     if (f.exists()) f.inputStream().use { load(it) }
 }
