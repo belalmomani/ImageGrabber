@@ -13,10 +13,13 @@ class Repo private constructor(private val ctx: Context) {
     private val db = AppDatabase.get(ctx)
     private val dao = db.images()
     private val hist = db.history()
-    private val source: ImageSource = PexelsSource { settings.apiKey }
+    private val sources: Map<String, ImageSource> = mapOf(
+        "pexels" to PexelsSource { settings.apiKey },
+        "pixabay" to PixabaySource { settings.pixabayEffective }
+    )
 
     suspend fun search(q: String, page: Int, perPage: Int, orientation: String?, size: String?) =
-        source.search(q, page, perPage, orientation, size)
+        (sources[settings.source] ?: sources.getValue("pixabay")).search(q, page, perPage, orientation, size)
 
     fun observeTracked(): Flow<List<ImageEntity>> = dao.observeTracked()
     fun observeFavorites(): Flow<List<ImageEntity>> = dao.observeFavorites()

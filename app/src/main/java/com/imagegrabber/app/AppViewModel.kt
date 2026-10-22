@@ -52,6 +52,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---- الإعدادات ----
     var apiKeyInput by mutableStateOf(repo.settings.userKey)
+    var pixabayKeyInput by mutableStateOf(repo.settings.pixabayKey)
+    var source by mutableStateOf(repo.settings.source)
     var quality by mutableStateOf(repo.settings.quality)
     var subfolders by mutableStateOf(repo.settings.subfolders)
     var folderName by mutableStateOf<String?>(
@@ -190,7 +192,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun retry(key: String) { viewModelScope.launch { repo.retryKey(key) } }
 
     // ---- الإعدادات ----
-    fun saveKey() { repo.settings.userKey = apiKeyInput; msg("تم حفظ المفتاح") }
+    fun saveKey() {
+        repo.settings.userKey = apiKeyInput
+        repo.settings.pixabayKey = pixabayKeyInput
+        msg("تم حفظ المفتاح")
+    }
+    fun setSourcePref(v: String) {
+        source = v
+        repo.settings.source = v
+        if (searched) search()
+    }
     fun setQualityPref(q: String) { quality = q; repo.settings.quality = q }
     fun setSubfoldersPref(v: Boolean) { subfolders = v; repo.settings.subfolders = v }
     fun clearHistory() { viewModelScope.launch { repo.clearHistory() } }

@@ -9,7 +9,10 @@
 تُشغَّل الاختبارات تلقائيًا قبل البناء؛ إن فشلت يُرفع تقريرها باسم `test-reports`.
 (التوقيع بمفتاح تصحيح ثابت `app/debug.keystore` فيمكن تحديث التطبيق فوق النسخة القديمة.)
 
-## ضبط مفتاح Pexels (اختر واحدًا)
+## ضبط مفتاح المصدر (Pixabay أو Pexels)
+اختر المصدر من الإعدادات. Pexels أوقف إصدار مفاتيح جديدة مؤقتًا، فالافتراضي Pixabay (مفتاحه من pixabay.com/api/docs).
+المتغيرات: `PIXABAY_API_KEY` و`PEXELS_API_KEY`.
+
 - **داخل التطبيق (الأسلم):** تبويب الإعدادات ← الصق المفتاح ← حفظ. لا يدخل المستودع ولا الـ APK.
 - **GitHub Secret:** Settings ← Secrets and variables ← Actions ← New secret باسم `PEXELS_API_KEY`
   (يُدمج في APK الخاص بك؛ لا تشارك هذا الـ APK مع أحد).

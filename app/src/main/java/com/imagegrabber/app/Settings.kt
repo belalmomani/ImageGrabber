@@ -14,6 +14,18 @@ class SettingsStore(ctx: Context) {
     val apiKey: String
         get() = userKey.ifBlank { BuildConfig.PEXELS_API_KEY }
 
+    var pixabayKey: String
+        get() = p.getString("pixabayKey", "").orEmpty()
+        set(v) { p.edit().putString("pixabayKey", v.trim()).apply() }
+
+    val pixabayEffective: String
+        get() = pixabayKey.ifBlank { BuildConfig.PIXABAY_API_KEY }
+
+    /** المصدر النشط: pixabay أو pexels. */
+    var source: String
+        get() = p.getString("source", "pixabay") ?: "pixabay"
+        set(v) { p.edit().putString("source", v).apply() }
+
     var folderUri: String?
         get() = p.getString("folderUri", null)
         set(v) { p.edit().putString("folderUri", v).apply() }

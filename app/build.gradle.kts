@@ -11,6 +11,8 @@ val localProps = Properties().apply {
     val f = rootProject.file("local.properties")
     if (f.exists()) f.inputStream().use { load(it) }
 }
+val pixabayKey: String = (System.getenv("PIXABAY_API_KEY") ?: localProps.getProperty("PIXABAY_API_KEY") ?: "")
+    .trim().replace("\"", "")
 val pexelsKey: String = (System.getenv("PEXELS_API_KEY") ?: localProps.getProperty("PEXELS_API_KEY") ?: "")
     .trim().replace("\"", "")
 
@@ -22,9 +24,10 @@ android {
         applicationId = "com.imagegrabber.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 3
-        versionName = "0.5.0"
+        versionCode = 4
+        versionName = "0.6.0"
         buildConfigField("String", "PEXELS_API_KEY", "\"$pexelsKey\"")
+        buildConfigField("String", "PIXABAY_API_KEY", "\"$pixabayKey\"")
     }
 
     // مفتاح تصحيح ثابت حتى يمكن تحديث التطبيق فوق النسخة السابقة دون حذفه

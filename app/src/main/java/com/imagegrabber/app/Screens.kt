@@ -232,7 +232,7 @@ fun SearchScreen(vm: AppViewModel) {
                 }
             }
         }
-        Text("الصور من Pexels", fontSize = 11.sp, modifier = Modifier.padding(vertical = 2.dp))
+        Text("الصور من ${if (vm.source == "pixabay") "Pixabay" else "Pexels"}", fontSize = 11.sp, modifier = Modifier.padding(vertical = 2.dp))
     }
 }
 
@@ -327,9 +327,18 @@ fun SettingsScreen(vm: AppViewModel) {
     ) {
         Text("الإعدادات", style = MaterialTheme.typography.titleLarge)
 
-        Text("مفتاح Pexels API", style = MaterialTheme.typography.titleMedium)
+        Text("مصدر الصور", style = MaterialTheme.typography.titleMedium)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            RadioButton(selected = vm.source == "pixabay", onClick = { vm.setSourcePref("pixabay") })
+            Text("Pixabay   ")
+            RadioButton(selected = vm.source == "pexels", onClick = { vm.setSourcePref("pexels") })
+            Text("Pexels")
+        }
+        val isPix = vm.source == "pixabay"
+        Text(if (isPix) "مفتاح Pixabay API" else "مفتاح Pexels API", style = MaterialTheme.typography.titleMedium)
         OutlinedTextField(
-            value = vm.apiKeyInput, onValueChange = { vm.apiKeyInput = it },
+            value = if (isPix) vm.pixabayKeyInput else vm.apiKeyInput,
+            onValueChange = { if (isPix) vm.pixabayKeyInput = it else vm.apiKeyInput = it },
             singleLine = true, visualTransformation = PasswordVisualTransformation(),
             placeholder = { Text("الصق مفتاحك هنا") }, modifier = Modifier.fillMaxWidth()
         )
@@ -381,7 +390,7 @@ fun DetailSheet(vm: AppViewModel, item: ImageItem) {
             )
             Text("المصوّر: ${item.photographer}")
             Text("الأبعاد: ${item.width}×${item.height}")
-            Text("المصدر: Pexels")
+            Text("المصدر: ${if (item.source == "pixabay") "Pixabay" else "Pexels"}")
             Text("الترخيص: ${item.license}")
             if (item.alt.isNotBlank()) Text("الوصف: ${item.alt}")
             Text("الحالة: ${Status.label(rec?.status ?: Status.NONE)}")
