@@ -53,6 +53,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -153,18 +156,12 @@ fun SearchScreen(vm: AppViewModel) {
             Button(onClick = { vm.search(); focus.clearFocus() }) { Text("بحث") }
         }
 
-        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            val o = listOf<Pair<String?, String>>(null to "كل الاتجاهات", "landscape" to "أفقي", "portrait" to "عمودي", "square" to "مربع")
-            o.forEach { (v, l) ->
-                FilterChip(selected = vm.orientation == v, onClick = { vm.orientation = v; vm.refilter() }, label = { Text(l) })
-            }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            val n = vm.filters.activeCount(vm.source)
+            OutlinedButton(onClick = { vm.showFilters = true }) { Text(if (n > 0) "تصفية ($n)" else "تصفية") }
+            if (n > 0) TextButton(onClick = { vm.applyFilters(SearchFilters()) }) { Text("مسح الفلاتر") }
         }
-        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            val s = listOf<Pair<String?, String>>(null to "كل الأحجام", "large" to "كبير", "medium" to "متوسط", "small" to "صغير")
-            s.forEach { (v, l) ->
-                FilterChip(selected = vm.size == v, onClick = { vm.size = v; vm.refilter() }, label = { Text(l) })
-            }
-        }
+        if (vm.showFilters) FilterSheet(vm)
 
         if (selecting) {
             val sel = vm.selectedItems()
@@ -427,4 +424,82 @@ fun DownloadConfirmDialog(vm: AppViewModel, items: List<ImageItem>) {
         confirmButton = { TextButton(onClick = { vm.confirmDownload() }) { Text("تنزيل") } },
         dismissButton = { TextButton(onClick = { vm.cancelDownloadRequest() }) { Text("إلغاء") } }
     )
+}
+
+// ───────────────────────── الفلاتر ─────────────────────────
+@Composable
+private fun ChipGroup(title: String, options: List<Pair<String?, String>>, selected: String?, onSelect: (String?) -> Unit) {
+    Text(title, style = MaterialTheme.typography.titleMedium)
+    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        options.forEach { (v, l) ->
+            FilterChip(selected = selected == v, onClick = { onSelect(v) }, label = { Text(l) })
+        }
+    }
+}
+
+@Composable
+fun FilterSheet(vm: AppViewModel) {
+    var f by remember { mutableStateOf(vm.filters) }
+    val pix = vm.source == "pixabay"
+    val orient = buildList<Pair<String?, String>> {
+        add(null to "الكل"); add("landscape" to "أفقي"); add("portrait" to "عمودي")
+        if (!pix) add("square" to "مربع")
+    }
+    val colors = listOf<Pair<String?, String>>(
+        null to "الكل", "red" to "أحمر", "orange" to "برتقالي", "yellow" to "أصفر", "green" to "أخضر",
+        "turquoise" to "تركواز", "blue" to "أزرق", "violet" to "بنفسجي", "pink" to "وردي",
+        "brown" to "بني", "black" to "أسود", "gray" to "رمادي", "white" to "أبيض"
+    )
+    val categories = listOf<Pair<String?, String>>(
+        null to "الكل", "backgrounds" to "خلفيات", "fashion" to "أزياء", "nature" to "طبيعة", "science" to "علوم",
+        "education" to "تعليم", "feelings" to "مشاعر", "health" to "صحة", "people" to "أشخاص", "religion" to "دين",
+        "places" to "أماكن", "animals" to "حيوانات", "industry" to "صناعة", "computer" to "حاسوب", "food" to "طعام",
+        "sports" to "رياضة", "transportation" to "مواصلات", "travel" to "سفر", "buildings" to "مباني",
+        "business" to "أعمال", "music" to "موسيقى"
+    )
+    ModalBottomSheet(onDismissRequest = { vm.showFilters = false }) {
+        Column(
+            Modifier.verticalScroll(rememberScrollState()).padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text("تصفية النتائج", style = MaterialTheme.typography.titleLarge)
+            ChipGroup("الاتجاه", orient, f.orientation) { f = f.copy(orientation = it) }
+            ChipGroup("اللون", colors, f.color) { f = f.copy(color = it) }
+            if (pix) {
+                ChipGroup(
+                    "نوع الصورة",
+                    listOf(null to "الكل", "photo" to "فوتوغرافية", "illustration" to "رسم", "vector" to "فيكتور"),
+                    f.imageType
+                ) { f = f.copy(imageType = it) }
+                ChipGroup("التصنيف", categories, f.category) { f = f.copy(category = it) }
+                ChipGroup(
+                    "أقل عرض (بكسل)",
+                    listOf(null to "الكل", "800" to "800", "1280" to "1280", "1920" to "1920", "3000" to "3000"),
+                    if (f.minWidth > 0) f.minWidth.toString() else null
+                ) { f = f.copy(minWidth = it?.toIntOrNull() ?: 0) }
+                ChipGroup(
+                    "الترتيب",
+                    listOf(null to "الافتراضي", "popular" to "الأشهر", "latest" to "الأحدث"),
+                    f.order
+                ) { f = f.copy(order = it) }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Switch(checked = f.editorsChoice, onCheckedChange = { f = f.copy(editorsChoice = it) })
+                    Text("  اختيار المحررين فقط")
+                }
+            } else {
+                ChipGroup(
+                    "الحجم",
+                    listOf(null to "الكل", "large" to "كبير", "medium" to "متوسط", "small" to "صغير"),
+                    f.size
+                ) { f = f.copy(size = it) }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = { vm.applyFilters(f); vm.showFilters = false },
+                    modifier = Modifier.weight(1f)
+                ) { Text("تطبيق") }
+                OutlinedButton(onClick = { f = SearchFilters() }, modifier = Modifier.weight(1f)) { Text("مسح الكل") }
+            }
+        }
+    }
 }

@@ -33,8 +33,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---- البحث ----
     var query by mutableStateOf("")
-    var orientation by mutableStateOf<String?>(null)
-    var size by mutableStateOf<String?>(null)
+    var filters by mutableStateOf(repo.settings.loadFilters())
+    var showFilters by mutableStateOf(false)
     var results by mutableStateOf<List<ImageItem>>(emptyList())
     var loading by mutableStateOf(false)
     var error by mutableStateOf<String?>(null)
@@ -90,6 +90,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         load()
     }
 
+    fun applyFilters(f: SearchFilters) {
+        filters = f
+        repo.settings.saveFilters(f)
+        refilter()
+    }
+
     fun searchFrom(q: String) { query = q; search() }
     fun refilter() { if (searched) search() }
     fun loadMore() { if (!loading && hasNext && error == null) load() }
@@ -101,7 +107,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         error = null
         viewModelScope.launch {
             try {
-                val r = repo.search(activeQuery, page, 30, orientation, size)
+                val r = repo.search(activeQuery, page, 30, filters)
                 if (myId != reqId) return@launch
                 val seen = results.map { it.key }.toHashSet()
                 results = results + r.items.filter { it.key !in seen }

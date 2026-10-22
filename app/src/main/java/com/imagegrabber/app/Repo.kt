@@ -18,8 +18,8 @@ class Repo private constructor(private val ctx: Context) {
         "pixabay" to PixabaySource { settings.pixabayEffective }
     )
 
-    suspend fun search(q: String, page: Int, perPage: Int, orientation: String?, size: String?) =
-        (sources[settings.source] ?: sources.getValue("pixabay")).search(q, page, perPage, orientation, size)
+    suspend fun search(q: String, page: Int, perPage: Int, filters: SearchFilters) =
+        (sources[settings.source] ?: sources.getValue("pixabay")).search(q, page, perPage, filters)
 
     fun observeTracked(): Flow<List<ImageEntity>> = dao.observeTracked()
     fun observeFavorites(): Flow<List<ImageEntity>> = dao.observeFavorites()

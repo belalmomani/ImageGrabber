@@ -32,7 +32,7 @@ data class SearchResult(
 interface ImageSource {
     val id: String
     suspend fun search(
-        query: String, page: Int, perPage: Int, orientation: String?, size: String?
+        query: String, page: Int, perPage: Int, filters: SearchFilters
     ): SearchResult
 }
 
@@ -40,10 +40,10 @@ class PexelsSource(private val keyProvider: () -> String) : ImageSource {
     override val id = "pexels"
 
     override suspend fun search(
-        query: String, page: Int, perPage: Int, orientation: String?, size: String?
-    ): SearchResult = withContext(Dispatchers.IO) { fetch(query, page, perPage, orientation, size) }
+        query: String, page: Int, perPage: Int, filters: SearchFilters
+    ): SearchResult = withContext(Dispatchers.IO) { fetch(query, page, perPage, filters) }
 
-    private fun fetch(query: String, page: Int, perPage: Int, orientation: String?, size: String?): SearchResult {
+    private fun fetch(query: String, page: Int, perPage: Int, filters: SearchFilters): SearchResult {
         val key = keyProvider().trim()
         if (key.isEmpty()) throw ApiException("لم يُضبط مفتاح Pexels. أدخله من تبويب الإعدادات.")
         val url = "https://api.pexels.com/v1/search".toHttpUrl().newBuilder()
@@ -51,8 +51,9 @@ class PexelsSource(private val keyProvider: () -> String) : ImageSource {
             .addQueryParameter("page", page.toString())
             .addQueryParameter("per_page", perPage.toString())
             .apply {
-                if (orientation != null) addQueryParameter("orientation", orientation)
-                if (size != null) addQueryParameter("size", size)
+                filters.orientation?.let { addQueryParameter("orientation", it) }
+                filters.size?.let { addQueryParameter("size", it) }
+                filters.color?.let { addQueryParameter("color", it) }
             }
             .build()
         val req = Request.Builder().url(url).header("Authorization", key).build()

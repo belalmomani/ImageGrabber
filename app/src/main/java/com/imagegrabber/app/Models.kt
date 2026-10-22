@@ -81,3 +81,31 @@ fun ImageEntity.toItem() = ImageItem(
     photographer = photographer, photographerUrl = photographerUrl, license = license,
     width = width, height = height, alt = alt
 )
+
+/** فلاتر البحث. كل مصدر يستخدم ما يدعمه فقط. */
+data class SearchFilters(
+    val orientation: String? = null,   // landscape / portrait / square
+    val size: String? = null,          // Pexels: large / medium / small
+    val color: String? = null,
+    val imageType: String? = null,     // Pixabay: photo / illustration / vector
+    val category: String? = null,      // Pixabay
+    val order: String? = null,         // Pixabay: popular / latest
+    val editorsChoice: Boolean = false,// Pixabay
+    val minWidth: Int = 0              // Pixabay
+) {
+    fun activeCount(source: String): Int {
+        var n = 0
+        if (orientation != null) n++
+        if (color != null) n++
+        if (source == "pexels") {
+            if (size != null) n++
+        } else {
+            if (imageType != null) n++
+            if (category != null) n++
+            if (order != null) n++
+            if (editorsChoice) n++
+            if (minWidth > 0) n++
+        }
+        return n
+    }
+}

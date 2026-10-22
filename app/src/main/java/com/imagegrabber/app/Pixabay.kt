@@ -13,30 +13,30 @@ class PixabaySource(private val keyProvider: () -> String) : ImageSource {
     override val id = "pixabay"
 
     override suspend fun search(
-        query: String, page: Int, perPage: Int, orientation: String?, size: String?
-    ): SearchResult = withContext(Dispatchers.IO) { fetch(query, page, perPage, orientation, size) }
+        query: String, page: Int, perPage: Int, filters: SearchFilters
+    ): SearchResult = withContext(Dispatchers.IO) { fetch(query, page, perPage, filters) }
 
-    private fun fetch(query: String, page: Int, perPage: Int, orientation: String?, size: String?): SearchResult {
+    private fun fetch(query: String, page: Int, perPage: Int, filters: SearchFilters): SearchResult {
         val key = keyProvider().trim()
         if (key.isEmpty()) throw ApiException("لم يُضبط مفتاح Pixabay. أدخله من تبويب الإعدادات.")
         val url = "https://pixabay.com/api/".toHttpUrl().newBuilder()
             .addQueryParameter("key", key)
             .addQueryParameter("q", query.take(100))
-            .addQueryParameter("image_type", "photo")
             .addQueryParameter("safesearch", "true")
             .addQueryParameter("page", page.toString())
             .addQueryParameter("per_page", perPage.toString())
+            .addQueryParameter("image_type", filters.imageType ?: "all")
             .apply {
-                when (orientation) {
+                when (filters.orientation) {
                     "landscape" -> addQueryParameter("orientation", "horizontal")
                     "portrait" -> addQueryParameter("orientation", "vertical")
                     else -> {}
                 }
-                when (size) {
-                    "large" -> addQueryParameter("min_width", "1920")
-                    "medium" -> addQueryParameter("min_width", "1280")
-                    else -> {}
-                }
+                filters.category?.let { addQueryParameter("category", it) }
+                filters.color?.let { addQueryParameter("colors", if (it == "violet") "lilac" else it) }
+                filters.order?.let { addQueryParameter("order", it) }
+                if (filters.editorsChoice) addQueryParameter("editors_choice", "true")
+                if (filters.minWidth > 0) addQueryParameter("min_width", filters.minWidth.toString())
             }
             .build()
         val req = Request.Builder().url(url).build()
