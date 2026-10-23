@@ -13,13 +13,23 @@ class Repo private constructor(private val ctx: Context) {
     private val db = AppDatabase.get(ctx)
     private val dao = db.images()
     private val hist = db.history()
-    private val sources: Map<String, ImageSource> = mapOf(
-        "pexels" to PexelsSource { settings.apiKey },
-        "pixabay" to PixabaySource { settings.pixabayEffective }
-    )
+    val pool = KeyPool.get(ctx)
+    private val sources: Map<String, ImageSource> = listOf(
+        PexelsSource(pool), PixabaySource(pool), UnsplashSource(pool),
+        FlickrSource(pool), OpenverseSource(), CommonsSource()
+    ).associateBy { it.id }
 
-    suspend fun search(q: String, page: Int, perPage: Int, filters: SearchFilters) =
-        (sources[settings.source] ?: sources.getValue("pixabay")).search(q, page, perPage, filters)
+    suspend fun search(q: String, page: Int, perPage: Int, filters: SearchFilters): SearchResult {
+        val sel = settings.source
+        if (sel == "all") {
+            val active = sources.values.filter {
+                pool.siteEnabled(it.id) && (!SourceCatalog.byId(it.id).needsKey || pool.hasUsable(it.id))
+            }
+            if (active.isEmpty()) throw ApiException("لا توجد مصادر مفعّلة. أضف مفاتيح من لوحة التحكم.")
+            return CompositeSource(active).search(q, page, perPage, filters)
+        }
+        return (sources[sel] ?: sources.getValue("commons")).search(q, page, perPage, filters)
+    }
 
     fun observeTracked(): Flow<List<ImageEntity>> = dao.observeTracked()
     fun observeFavorites(): Flow<List<ImageEntity>> = dao.observeFavorites()

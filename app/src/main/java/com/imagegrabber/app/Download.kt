@@ -82,7 +82,21 @@ object Downloader {
                 file.delete()
                 throw e
             }
+            trackUnsplash(ctx, item)
             file.uri.toString() to total
+        }
+    }
+
+    /** شرط Unsplash: إبلاغهم بالتنزيل عبر download_location (أفضل جهد). */
+    private fun trackUnsplash(ctx: Context, item: ImageEntity) {
+        if (item.source != "unsplash") return
+        val loc = item.extra ?: return
+        if (!loc.startsWith("https://api.unsplash.com/")) return
+        val key = KeyPool.get(ctx).firstKey("unsplash") ?: return
+        try {
+            val req = Request.Builder().url(loc).header("Authorization", "Client-ID $key").build()
+            Http.client.newCall(req).execute().close()
+        } catch (e: Exception) {
         }
     }
 

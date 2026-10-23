@@ -17,7 +17,8 @@ data class ImageItem(
     val license: String,
     val width: Int,
     val height: Int,
-    val alt: String
+    val alt: String,
+    val extra: String? = null
 )
 
 object Status {
@@ -59,7 +60,8 @@ data class ImageEntity(
     val localUri: String? = null,
     val sizeBytes: Long = 0,
     val error: String? = null,
-    val updatedAt: Long = System.currentTimeMillis()
+    val updatedAt: Long = System.currentTimeMillis(),
+    val extra: String? = null
 )
 
 @Entity(tableName = "history")
@@ -72,14 +74,14 @@ fun ImageItem.toEntity(query: String) = ImageEntity(
     imageKey = key, source = source, sourceId = sourceId, searchQuery = query,
     thumbUrl = thumbUrl, largeUrl = largeUrl, originalUrl = originalUrl, pageUrl = pageUrl,
     photographer = photographer, photographerUrl = photographerUrl, license = license,
-    width = width, height = height, alt = alt
+    width = width, height = height, alt = alt, extra = extra
 )
 
 fun ImageEntity.toItem() = ImageItem(
     key = imageKey, source = source, sourceId = sourceId, thumbUrl = thumbUrl,
     largeUrl = largeUrl, originalUrl = originalUrl, pageUrl = pageUrl,
     photographer = photographer, photographerUrl = photographerUrl, license = license,
-    width = width, height = height, alt = alt
+    width = width, height = height, alt = alt, extra = extra
 )
 
 /** فلاتر البحث. كل مصدر يستخدم ما يدعمه فقط. */
@@ -93,19 +95,16 @@ data class SearchFilters(
     val editorsChoice: Boolean = false,// Pixabay
     val minWidth: Int = 0              // Pixabay
 ) {
-    fun activeCount(source: String): Int {
+    fun activeCount(caps: Set<String>): Int {
         var n = 0
-        if (orientation != null) n++
-        if (color != null) n++
-        if (source == "pexels") {
-            if (size != null) n++
-        } else {
-            if (imageType != null) n++
-            if (category != null) n++
-            if (order != null) n++
-            if (editorsChoice) n++
-            if (minWidth > 0) n++
-        }
+        if ("orientation" in caps && orientation != null) n++
+        if ("size" in caps && size != null) n++
+        if ("color" in caps && color != null) n++
+        if ("type" in caps && imageType != null) n++
+        if ("category" in caps && category != null) n++
+        if ("order" in caps && order != null) n++
+        if ("editors" in caps && editorsChoice) n++
+        if ("minWidth" in caps && minWidth > 0) n++
         return n
     }
 }

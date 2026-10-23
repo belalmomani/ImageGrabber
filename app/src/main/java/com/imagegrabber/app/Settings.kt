@@ -5,25 +5,9 @@ import android.content.Context
 class SettingsStore(ctx: Context) {
     private val p = ctx.getSharedPreferences("settings", Context.MODE_PRIVATE)
 
-    /** مفتاح أدخله المستخدم داخل التطبيق (لا يُرفع إلى أي مستودع). */
-    var userKey: String
-        get() = p.getString("apiKey", "").orEmpty()
-        set(v) { p.edit().putString("apiKey", v.trim()).apply() }
-
-    /** المفتاح الفعّال: ما أدخله المستخدم، وإلا ما أُدمج وقت البناء. */
-    val apiKey: String
-        get() = userKey.ifBlank { BuildConfig.PEXELS_API_KEY }
-
-    var pixabayKey: String
-        get() = p.getString("pixabayKey", "").orEmpty()
-        set(v) { p.edit().putString("pixabayKey", v.trim()).apply() }
-
-    val pixabayEffective: String
-        get() = pixabayKey.ifBlank { BuildConfig.PIXABAY_API_KEY }
-
-    /** المصدر النشط: pixabay أو pexels. */
+    /** المصدر النشط: all (تناوب) أو معرّف مصدر واحد. */
     var source: String
-        get() = p.getString("source", "pixabay") ?: "pixabay"
+        get() = p.getString("source", "all") ?: "all"
         set(v) { p.edit().putString("source", v).apply() }
 
     fun loadFilters() = SearchFilters(

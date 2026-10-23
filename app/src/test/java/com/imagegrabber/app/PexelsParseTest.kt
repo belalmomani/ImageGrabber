@@ -6,8 +6,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PexelsParseTest {
-    private val source = PexelsSource { "k" }
-
     private val sample = """
     {"total_results":2,"next_page":"https://api.pexels.com/next",
      "photos":[
@@ -19,7 +17,7 @@ class PexelsParseTest {
     """.trimIndent()
 
     @Test fun parsesValidPhotosOnly() {
-        val r = source.parse(sample, 5)
+        val r = PexelsSource.parse(sample, 5)
         assertEquals(1, r.items.size)
         val p = r.items[0]
         assertEquals("pexels:1", p.key)
@@ -32,18 +30,18 @@ class PexelsParseTest {
     }
 
     @Test fun noNextPage() {
-        val r = source.parse("""{"total_results":0,"photos":[]}""", null)
+        val r = PexelsSource.parse("""{"total_results":0,"photos":[]}""", null)
         assertFalse(r.hasNext)
         assertTrue(r.items.isEmpty())
     }
 
     @Test(expected = ApiException::class)
     fun invalidJsonThrows() {
-        source.parse("not json", null)
+        PexelsSource.parse("not json", null)
     }
 
     @Test(expected = ApiException::class)
     fun missingPhotosThrows() {
-        source.parse("""{"total_results":0}""", null)
+        PexelsSource.parse("""{"total_results":0}""", null)
     }
 }

@@ -35,6 +35,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Card
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -65,11 +66,15 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import kotlinx.coroutines.flow.filter
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 fun openUrl(ctx: Context, url: String) {
     if (!url.startsWith("http")) return
@@ -157,7 +162,7 @@ fun SearchScreen(vm: AppViewModel) {
         }
 
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            val n = vm.filters.activeCount(vm.source)
+            val n = vm.filters.activeCount(SourceCatalog.caps(vm.source))
             OutlinedButton(onClick = { vm.showFilters = true }) { Text(if (n > 0) "تصفية ($n)" else "تصفية") }
             if (n > 0) TextButton(onClick = { vm.applyFilters(SearchFilters()) }) { Text("مسح الفلاتر") }
         }
@@ -229,7 +234,7 @@ fun SearchScreen(vm: AppViewModel) {
                 }
             }
         }
-        Text("الصور من ${if (vm.source == "pixabay") "Pixabay" else "Pexels"}", fontSize = 11.sp, modifier = Modifier.padding(vertical = 2.dp))
+        Text("المصدر: ${SourceCatalog.label(vm.source)}", fontSize = 11.sp, modifier = Modifier.padding(vertical = 2.dp))
     }
 }
 
@@ -325,22 +330,15 @@ fun SettingsScreen(vm: AppViewModel) {
         Text("الإعدادات", style = MaterialTheme.typography.titleLarge)
 
         Text("مصدر الصور", style = MaterialTheme.typography.titleMedium)
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            RadioButton(selected = vm.source == "pixabay", onClick = { vm.setSourcePref("pixabay") })
-            Text("Pixabay   ")
-            RadioButton(selected = vm.source == "pexels", onClick = { vm.setSourcePref("pexels") })
-            Text("Pexels")
+        (listOf("all") + SourceCatalog.all.map { it.id }).forEach { sid ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                RadioButton(selected = vm.source == sid, onClick = { vm.setSourcePref(sid) })
+                Text(SourceCatalog.label(sid))
+            }
         }
-        val isPix = vm.source == "pixabay"
-        Text(if (isPix) "مفتاح Pixabay API" else "مفتاح Pexels API", style = MaterialTheme.typography.titleMedium)
-        OutlinedTextField(
-            value = if (isPix) vm.pixabayKeyInput else vm.apiKeyInput,
-            onValueChange = { if (isPix) vm.pixabayKeyInput = it else vm.apiKeyInput = it },
-            singleLine = true, visualTransformation = PasswordVisualTransformation(),
-            placeholder = { Text("الصق مفتاحك هنا") }, modifier = Modifier.fillMaxWidth()
-        )
-        Button(onClick = { vm.saveKey() }) { Text("حفظ المفتاح") }
-        Text("يُحفظ داخل الهاتف فقط ولا يُرفع إلى GitHub.", fontSize = 12.sp)
+        OutlinedButton(onClick = { vm.showAdminLogin = true }, modifier = Modifier.fillMaxWidth()) {
+            Text("لوحة التحكم (المشرف): المفاتيح والمصادر")
+        }
 
         Text("مجلد الحفظ", style = MaterialTheme.typography.titleMedium)
         Text(vm.folderName ?: "لم يُختر بعد")
@@ -387,7 +385,7 @@ fun DetailSheet(vm: AppViewModel, item: ImageItem) {
             )
             Text("المصوّر: ${item.photographer}")
             Text("الأبعاد: ${item.width}×${item.height}")
-            Text("المصدر: ${if (item.source == "pixabay") "Pixabay" else "Pexels"}")
+            Text("المصدر: ${SourceCatalog.name(item.source)}")
             Text("الترخيص: ${item.license}")
             if (item.alt.isNotBlank()) Text("الوصف: ${item.alt}")
             Text("الحالة: ${Status.label(rec?.status ?: Status.NONE)}")
@@ -440,11 +438,7 @@ private fun ChipGroup(title: String, options: List<Pair<String?, String>>, selec
 @Composable
 fun FilterSheet(vm: AppViewModel) {
     var f by remember { mutableStateOf(vm.filters) }
-    val pix = vm.source == "pixabay"
-    val orient = buildList<Pair<String?, String>> {
-        add(null to "الكل"); add("landscape" to "أفقي"); add("portrait" to "عمودي")
-        if (!pix) add("square" to "مربع")
-    }
+    val caps = SourceCatalog.caps(vm.source)
     val colors = listOf<Pair<String?, String>>(
         null to "الكل", "red" to "أحمر", "orange" to "برتقالي", "yellow" to "أصفر", "green" to "أخضر",
         "turquoise" to "تركواز", "blue" to "أزرق", "violet" to "بنفسجي", "pink" to "وردي",
@@ -463,35 +457,50 @@ fun FilterSheet(vm: AppViewModel) {
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Text("تصفية النتائج", style = MaterialTheme.typography.titleLarge)
-            ChipGroup("الاتجاه", orient, f.orientation) { f = f.copy(orientation = it) }
-            ChipGroup("اللون", colors, f.color) { f = f.copy(color = it) }
-            if (pix) {
+            Text("المصدر: ${SourceCatalog.label(vm.source)} (تُطبَّق الفلاتر التي يدعمها كل مصدر)", fontSize = 12.sp)
+            if (caps.isEmpty()) Text("هذا المصدر لا يدعم فلاتر إضافية.")
+            if ("orientation" in caps) {
+                val orient = buildList<Pair<String?, String>> {
+                    add(null to "الكل"); add("landscape" to "أفقي"); add("portrait" to "عمودي")
+                    if ("square" in caps) add("square" to "مربع")
+                }
+                ChipGroup("الاتجاه", orient, f.orientation) { f = f.copy(orientation = it) }
+            }
+            if ("color" in caps) ChipGroup("اللون", colors, f.color) { f = f.copy(color = it) }
+            if ("size" in caps) {
                 ChipGroup(
-                    "نوع الصورة",
-                    listOf(null to "الكل", "photo" to "فوتوغرافية", "illustration" to "رسم", "vector" to "فيكتور"),
-                    f.imageType
-                ) { f = f.copy(imageType = it) }
-                ChipGroup("التصنيف", categories, f.category) { f = f.copy(category = it) }
+                    "الحجم",
+                    listOf<Pair<String?, String>>(null to "الكل", "large" to "كبير", "medium" to "متوسط", "small" to "صغير"),
+                    f.size
+                ) { f = f.copy(size = it) }
+            }
+            if ("type" in caps) {
+                val types = buildList<Pair<String?, String>> {
+                    add(null to "الكل"); add("photo" to "فوتوغرافية"); add("illustration" to "رسم")
+                    if ("vector" in caps) add("vector" to "فيكتور")
+                }
+                ChipGroup("نوع الصورة", types, f.imageType) { f = f.copy(imageType = it) }
+            }
+            if ("category" in caps) ChipGroup("التصنيف", categories, f.category) { f = f.copy(category = it) }
+            if ("minWidth" in caps) {
                 ChipGroup(
                     "أقل عرض (بكسل)",
-                    listOf(null to "الكل", "800" to "800", "1280" to "1280", "1920" to "1920", "3000" to "3000"),
+                    listOf<Pair<String?, String>>(null to "الكل", "800" to "800", "1280" to "1280", "1920" to "1920", "3000" to "3000"),
                     if (f.minWidth > 0) f.minWidth.toString() else null
                 ) { f = f.copy(minWidth = it?.toIntOrNull() ?: 0) }
-                ChipGroup(
-                    "الترتيب",
-                    listOf(null to "الافتراضي", "popular" to "الأشهر", "latest" to "الأحدث"),
-                    f.order
-                ) { f = f.copy(order = it) }
+            }
+            if ("order" in caps) {
+                val orders = buildList<Pair<String?, String>> {
+                    add(null to "الافتراضي"); add("latest" to "الأحدث")
+                    if ("popular" in caps) add("popular" to "الأشهر")
+                }
+                ChipGroup("الترتيب", orders, f.order) { f = f.copy(order = it) }
+            }
+            if ("editors" in caps) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Switch(checked = f.editorsChoice, onCheckedChange = { f = f.copy(editorsChoice = it) })
                     Text("  اختيار المحررين فقط")
                 }
-            } else {
-                ChipGroup(
-                    "الحجم",
-                    listOf(null to "الكل", "large" to "كبير", "medium" to "متوسط", "small" to "صغير"),
-                    f.size
-                ) { f = f.copy(size = it) }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(
@@ -499,6 +508,129 @@ fun FilterSheet(vm: AppViewModel) {
                     modifier = Modifier.weight(1f)
                 ) { Text("تطبيق") }
                 OutlinedButton(onClick = { f = SearchFilters() }, modifier = Modifier.weight(1f)) { Text("مسح الكل") }
+            }
+        }
+    }
+}
+
+// ───────────────────────── لوحة التحكم (المشرف) ─────────────────────────
+@Composable
+fun AdminLoginDialog(vm: AppViewModel) {
+    var email by remember { mutableStateOf("") }
+    var pin by remember { mutableStateOf("") }
+    var confirm by remember { mutableStateOf("") }
+    var err by remember { mutableStateOf<String?>(null) }
+    val first = !vm.adminHasPin()
+    AlertDialog(
+        onDismissRequest = { vm.showAdminLogin = false },
+        title = { Text(if (first) "إنشاء رمز المشرف" else "دخول المشرف") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = email, onValueChange = { email = it }, singleLine = true,
+                    label = { Text("بريد المشرف") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email)
+                )
+                OutlinedTextField(
+                    value = pin, onValueChange = { pin = it.filter(Char::isDigit).take(12) }, singleLine = true,
+                    label = { Text(if (first) "رمز جديد (أرقام)" else "الرمز") },
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword)
+                )
+                if (first) {
+                    OutlinedTextField(
+                        value = confirm, onValueChange = { confirm = it.filter(Char::isDigit).take(12) },
+                        singleLine = true, label = { Text("تأكيد الرمز") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword)
+                    )
+                }
+                err?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            }
+        },
+        confirmButton = { TextButton(onClick = { err = vm.adminLogin(email, pin, confirm) }) { Text("دخول") } },
+        dismissButton = { TextButton(onClick = { vm.showAdminLogin = false }) { Text("إلغاء") } }
+    )
+}
+
+private fun mask(k: String): String = if (k.length <= 8) "••••" else k.take(4) + "…" + k.takeLast(3)
+
+private fun hhmm(t: Long): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(t))
+
+@Composable
+fun AdminScreen(vm: AppViewModel) {
+    val tick = vm.adminTick
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("لوحة التحكم", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+            TextButton(onClick = { vm.lockAdmin() }) { Text("قفل") }
+        }
+        Text("المشرف: ${AdminConfig.EMAIL}", fontSize = 12.sp)
+        Text(
+            "عند إضافة أكثر من مفتاح لنفس الموقع يتناوب التطبيق بينها تلقائيًا مع كل طلب. " +
+                "إذا بلغ مفتاح حد الطلبات يُوقَف مؤقتًا ويُجرَّب التالي. " +
+                "اختر «كل المصادر» من الإعدادات للتناوب بين المواقع أيضًا.",
+            fontSize = 12.sp
+        )
+        SourceCatalog.all.forEach { info -> SourceCard(vm, info, tick) }
+        Text(
+            "المفاتيح تُحفظ داخل التطبيق على هذا الهاتف فقط ولا تُرفع إلى أي مكان. " +
+                "بعض المصادر تشترط ذكر المصوّر والمصدر؛ راجع ترخيص كل صورة قبل إعادة نشرها.",
+            fontSize = 11.sp
+        )
+    }
+}
+
+@Composable
+private fun SourceCard(vm: AppViewModel, info: SourceInfo, tick: Int) {
+    val ctx = LocalContext.current
+    val keys = remember(tick) { vm.pool.allKeys(info.id) }
+    val siteOn = remember(tick) { vm.pool.siteEnabled(info.id) }
+    var label by remember(info.id) { mutableStateOf("") }
+    var keyText by remember(info.id) { mutableStateOf("") }
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(info.name, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                Text(if (siteOn) "مفعّل" else "معطّل", fontSize = 12.sp)
+                Switch(checked = siteOn, onCheckedChange = { vm.setSiteEnabled(info.id, it) })
+            }
+            Text(info.note, fontSize = 12.sp)
+            if (info.needsKey) {
+                TextButton(onClick = { openUrl(ctx, info.keyUrl) }) { Text("احصل على مفتاح (${info.keyName})") }
+                if (keys.isEmpty()) Text("لا توجد مفاتيح بعد.", fontSize = 12.sp)
+                keys.forEach { k ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(k.label)
+                            val until = vm.pool.coolingUntil(k.id)
+                            Text(
+                                mask(k.key) + (if (until > System.currentTimeMillis()) " • محدود مؤقتًا حتى ${hhmm(until)}" else ""),
+                                fontSize = 11.sp
+                            )
+                        }
+                        if (!k.id.startsWith("builtin")) {
+                            Switch(checked = k.enabled, onCheckedChange = { vm.setKeyEnabled(info.id, k.id, it) })
+                            TextButton(onClick = { vm.removeKey(info.id, k.id) }) { Text("حذف") }
+                        }
+                    }
+                }
+                OutlinedTextField(
+                    value = label, onValueChange = { label = it }, singleLine = true,
+                    label = { Text("اسم الحساب (اختياري)") }, modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = keyText, onValueChange = { keyText = it }, singleLine = true,
+                    label = { Text("المفتاح") }, modifier = Modifier.fillMaxWidth()
+                )
+                Button(onClick = { if (vm.addKey(info.id, label, keyText)) { label = ""; keyText = "" } }) {
+                    Text("إضافة مفتاح")
+                }
+            } else {
+                Text("لا يحتاج مفتاحًا ✓", fontSize = 12.sp)
             }
         }
     }

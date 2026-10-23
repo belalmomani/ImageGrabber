@@ -69,6 +69,8 @@ fun App(vm: AppViewModel = viewModel()) {
         vm.onCsvTarget(uri)
     }
 
+    LaunchedEffect(tab) { if (tab != Tab.Settings) vm.lockAdmin() }
+
     LaunchedEffect(Unit) {
         vm.uiEvents.collect { e ->
             when (e) {
@@ -107,11 +109,12 @@ fun App(vm: AppViewModel = viewModel()) {
                 Tab.Search -> SearchScreen(vm)
                 Tab.Favorites -> FavoritesScreen(vm)
                 Tab.Downloads -> DownloadsScreen(vm)
-                Tab.Settings -> SettingsScreen(vm)
+                Tab.Settings -> if (vm.adminOpen) AdminScreen(vm) else SettingsScreen(vm)
             }
         }
     }
 
+    if (vm.showAdminLogin) AdminLoginDialog(vm)
     vm.detail?.let { DetailSheet(vm, it) }
     vm.pendingDownload?.let { DownloadConfirmDialog(vm, it) }
 }

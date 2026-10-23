@@ -28,6 +28,8 @@ sealed interface UiEvent {
 
 class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val repo = Repo.get(app)
+    val pool = repo.pool
+    private val auth = AdminAuth(app)
     private val events = Channel<UiEvent>(Channel.BUFFERED)
     val uiEvents = events.receiveAsFlow()
 
@@ -51,8 +53,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val searched: Boolean get() = activeQuery.isNotBlank()
 
     // ---- الإعدادات ----
-    var apiKeyInput by mutableStateOf(repo.settings.userKey)
-    var pixabayKeyInput by mutableStateOf(repo.settings.pixabayKey)
     var source by mutableStateOf(repo.settings.source)
     var quality by mutableStateOf(repo.settings.quality)
     var subfolders by mutableStateOf(repo.settings.subfolders)
@@ -198,11 +198,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun retry(key: String) { viewModelScope.launch { repo.retryKey(key) } }
 
     // ---- الإعدادات ----
-    fun saveKey() {
-        repo.settings.userKey = apiKeyInput
-        repo.settings.pixabayKey = pixabayKeyInput
-        msg("تم حفظ المفتاح")
-    }
     fun setSourcePref(v: String) {
         source = v
         repo.settings.source = v
@@ -211,6 +206,44 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun setQualityPref(q: String) { quality = q; repo.settings.quality = q }
     fun setSubfoldersPref(v: Boolean) { subfolders = v; repo.settings.subfolders = v }
     fun clearHistory() { viewModelScope.launch { repo.clearHistory() } }
+
+    // ---- لوحة التحكم ----
+    var showAdminLogin by mutableStateOf(false)
+    var adminOpen by mutableStateOf(false)
+    var adminTick by mutableStateOf(0)
+
+    fun adminHasPin(): Boolean = auth.hasPin()
+
+    /** يعيد رسالة خطأ أو null عند النجاح. */
+    fun adminLogin(email: String, pin: String, confirm: String): String? {
+        if (!auth.hasPin()) {
+            if (!email.trim().equals(AdminConfig.EMAIL, ignoreCase = true)) return "هذا البريد غير مصرّح له"
+            if (pin.length < 4) return "الرمز 4 أرقام على الأقل"
+            if (pin != confirm) return "الرمزان غير متطابقين"
+            auth.setPin(pin)
+        } else {
+            when (auth.verify(email, pin)) {
+                AuthResult.OK -> {}
+                AuthResult.LOCKED -> return "محاولات كثيرة. حاول بعد 5 دقائق"
+                AuthResult.BAD -> return "البيانات غير صحيحة"
+            }
+        }
+        showAdminLogin = false
+        adminOpen = true
+        return null
+    }
+
+    fun lockAdmin() { adminOpen = false }
+
+    fun addKey(source: String, label: String, key: String): Boolean {
+        val ok = pool.add(source, label, key)
+        msg(if (ok) "تمت إضافة المفتاح" else "المفتاح فارغ أو مضاف مسبقًا")
+        adminTick++
+        return ok
+    }
+    fun removeKey(source: String, id: String) { pool.remove(source, id); adminTick++ }
+    fun setKeyEnabled(source: String, id: String, v: Boolean) { pool.setEnabled(source, id, v); adminTick++ }
+    fun setSiteEnabled(source: String, v: Boolean) { pool.setSiteEnabled(source, v); adminTick++ }
 
     // ---- تصدير CSV ----
     private var csvText: String? = null

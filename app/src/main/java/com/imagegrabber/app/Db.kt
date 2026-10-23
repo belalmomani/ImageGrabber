@@ -8,6 +8,8 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -64,7 +66,7 @@ interface HistoryDao {
     suspend fun clear()
 }
 
-@Database(entities = [ImageEntity::class, SearchHistory::class], version = 1, exportSchema = false)
+@Database(entities = [ImageEntity::class, SearchHistory::class], version = 2, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun images(): ImageDao
     abstract fun history(): HistoryDao
@@ -73,7 +75,13 @@ abstract class AppDatabase : RoomDatabase() {
         @Volatile private var inst: AppDatabase? = null
         fun get(ctx: Context): AppDatabase = inst ?: synchronized(this) {
             inst ?: Room.databaseBuilder(ctx.applicationContext, AppDatabase::class.java, "app.db")
-                .build().also { inst = it }
+                .addMigrations(MIGRATION_1_2).build().also { inst = it }
         }
+    }
+}
+
+val MIGRATION_1_2 = object : Migration(1, 2) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE images ADD COLUMN extra TEXT")
     }
 }

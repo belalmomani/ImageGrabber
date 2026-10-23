@@ -6,8 +6,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PixabayParseTest {
-    private val source = PixabaySource { "k" }
-
     private val sample = """
     {"total":100,"totalHits":100,"hits":[
       {"id":7,"pageURL":"https://pixabay.com/photos/x-7/","tags":"cat, pet","webformatURL":"https://w/7.jpg",
@@ -18,7 +16,7 @@ class PixabayParseTest {
     """.trimIndent()
 
     @Test fun parsesValidHitsOnly() {
-        val r = source.parse(sample, 1, 30, 99)
+        val r = PixabaySource.parse(sample, 1, 30, 99)
         assertEquals(1, r.items.size)
         val p = r.items[0]
         assertEquals("pixabay:7", p.key)
@@ -31,12 +29,12 @@ class PixabayParseTest {
     }
 
     @Test fun lastPageHasNoNext() {
-        val r = source.parse("""{"total":10,"totalHits":10,"hits":[]}""", 1, 30, null)
+        val r = PixabaySource.parse("""{"total":10,"totalHits":10,"hits":[]}""", 1, 30, null)
         assertFalse(r.hasNext)
     }
 
     @Test(expected = ApiException::class)
     fun invalidJsonThrows() {
-        source.parse("oops", 1, 30, null)
+        PixabaySource.parse("oops", 1, 30, null)
     }
 }
