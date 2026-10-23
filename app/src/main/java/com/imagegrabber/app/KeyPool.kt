@@ -88,6 +88,14 @@ class KeyPool private constructor(ctx: Context) {
         save(source, stored(source).map { if (it.id == id) it.copy(enabled = enabled) else it })
     }
 
+    /** مزامنة محلية مع Supabase: استبدال المفاتيح المخزَّنة بما في الخادم. */
+    fun replaceStored(source: String, list: List<ApiKey>) = save(source, list)
+
+    fun putLocal(source: String, k: ApiKey) {
+        val cur = stored(source).filter { it.id != k.id }
+        save(source, cur + k)
+    }
+
     fun siteEnabled(source: String): Boolean = p.getBoolean("site_$source", true)
     fun setSiteEnabled(source: String, v: Boolean) { p.edit().putBoolean("site_$source", v).apply() }
 

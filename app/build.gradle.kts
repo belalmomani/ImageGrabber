@@ -13,6 +13,10 @@ val localProps = Properties().apply {
 }
 val pixabayKey: String = (System.getenv("PIXABAY_API_KEY") ?: localProps.getProperty("PIXABAY_API_KEY") ?: "")
     .trim().replace("\"", "")
+val sbUrl: String = System.getenv("SUPABASE_URL") ?: "https://eskvsgdgjeemzgwwefjp.supabase.co"
+// المفتاح العام (anon) للمشروع: ليس سريًّا؛ الحماية عبر RLS في Supabase
+val sbKey: String = System.getenv("SUPABASE_KEY")
+    ?: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVza3ZzZ2RnamVlbXpnd3dlZmpwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI3MDk2NDIsImV4cCI6MjEwODI4NTY0Mn0.p0iuaDuWL5vLl22NNDj9UewnRagQvcnVDTcEVGMMBFs"
 val pexelsKey: String = (System.getenv("PEXELS_API_KEY") ?: localProps.getProperty("PEXELS_API_KEY") ?: "")
     .trim().replace("\"", "")
 
@@ -24,10 +28,12 @@ android {
         applicationId = "com.imagegrabber.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 6
-        versionName = "0.8.0"
+        versionCode = 7
+        versionName = "0.9.0"
         buildConfigField("String", "PEXELS_API_KEY", "\"$pexelsKey\"")
         buildConfigField("String", "PIXABAY_API_KEY", "\"$pixabayKey\"")
+        buildConfigField("String", "SUPABASE_URL", "\"$sbUrl\"")
+        buildConfigField("String", "SUPABASE_KEY", "\"$sbKey\"")
     }
 
     // مفتاح تصحيح ثابت حتى يمكن تحديث التطبيق فوق النسخة السابقة دون حذفه

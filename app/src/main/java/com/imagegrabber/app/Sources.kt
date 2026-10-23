@@ -49,6 +49,8 @@ object SourceCatalog {
         )
     )
 
+    val keyed: List<String> get() = all.filter { it.needsKey }.map { it.id }
+
     private val allCaps = setOf("orientation", "size", "color", "type", "order")
 
     fun byId(id: String): SourceInfo = all.firstOrNull { it.id == id } ?: all.first()

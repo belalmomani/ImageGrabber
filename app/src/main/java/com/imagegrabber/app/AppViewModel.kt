@@ -29,7 +29,7 @@ sealed interface UiEvent {
 class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val repo = Repo.get(app)
     val pool = repo.pool
-    private val auth = AdminAuth(app)
+    private val sb = repo.sb
     private val events = Channel<UiEvent>(Channel.BUFFERED)
     val uiEvents = events.receiveAsFlow()
 
@@ -207,43 +207,128 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun setSubfoldersPref(v: Boolean) { subfolders = v; repo.settings.subfolders = v }
     fun clearHistory() { viewModelScope.launch { repo.clearHistory() } }
 
-    // ---- لوحة التحكم ----
+    // ---- لوحة التحكم (Supabase) ----
     var showAdminLogin by mutableStateOf(false)
     var adminOpen by mutableStateOf(false)
     var adminTick by mutableStateOf(0)
+    var adminBusy by mutableStateOf(false)
+    var adminError by mutableStateOf<String?>(null)
 
-    fun adminHasPin(): Boolean = auth.hasPin()
-
-    /** يعيد رسالة خطأ أو null عند النجاح. */
-    fun adminLogin(email: String, pin: String, confirm: String): String? {
-        if (!auth.hasPin()) {
-            if (!email.trim().equals(AdminConfig.EMAIL, ignoreCase = true)) return "هذا البريد غير مصرّح له"
-            if (pin.length < 4) return "الرمز 4 أرقام على الأقل"
-            if (pin != confirm) return "الرمزان غير متطابقين"
-            auth.setPin(pin)
-        } else {
-            when (auth.verify(email, pin)) {
-                AuthResult.OK -> {}
-                AuthResult.LOCKED -> return "محاولات كثيرة. حاول بعد 5 دقائق"
-                AuthResult.BAD -> return "البيانات غير صحيحة"
+    init {
+        // مزامنة صامتة عند فتح التطبيق إن كانت هناك جلسة مشرف محفوظة
+        viewModelScope.launch {
+            if (sb.hasSession()) {
+                try { repo.syncFromRemote(); adminTick++ } catch (e: Exception) { }
             }
         }
-        showAdminLogin = false
-        adminOpen = true
-        return null
+    }
+
+    private fun checkAdminInput(email: String, password: String): Boolean {
+        if (!email.trim().equals(AdminConfig.EMAIL, ignoreCase = true)) {
+            adminError = "هذا البريد غير مصرّح له"
+            return false
+        }
+        if (password.length < 6) {
+            adminError = "كلمة المرور 6 أحرف على الأقل"
+            return false
+        }
+        return true
+    }
+
+    fun adminLogin(email: String, password: String) {
+        if (!checkAdminInput(email, password)) return
+        viewModelScope.launch {
+            adminBusy = true
+            adminError = null
+            try {
+                sb.signIn(email.trim(), password)
+                repo.syncFromRemote()
+                showAdminLogin = false
+                adminOpen = true
+                adminTick++
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: ApiException) {
+                adminError = e.message
+            } catch (e: Exception) {
+                adminError = "حدث خطأ غير متوقع"
+            } finally {
+                adminBusy = false
+            }
+        }
+    }
+
+    fun adminSignUp(email: String, password: String) {
+        if (!checkAdminInput(email, password)) return
+        viewModelScope.launch {
+            adminBusy = true
+            adminError = null
+            try {
+                sb.signUp(email.trim(), password)
+                msg("أُرسلت رسالة تأكيد إلى بريدك. أكّدها ثم سجّل الدخول.")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: ApiException) {
+                adminError = e.message
+            } catch (e: Exception) {
+                adminError = "حدث خطأ غير متوقع"
+            } finally {
+                adminBusy = false
+            }
+        }
     }
 
     fun lockAdmin() { adminOpen = false }
 
-    fun addKey(source: String, label: String, key: String): Boolean {
-        val ok = pool.add(source, label, key)
-        msg(if (ok) "تمت إضافة المفتاح" else "المفتاح فارغ أو مضاف مسبقًا")
-        adminTick++
-        return ok
+    fun adminSignOut() {
+        sb.signOut()
+        adminOpen = false
+        msg("تم تسجيل الخروج. تبقى المفاتيح المحفوظة على الجهاز للبحث.")
     }
-    fun removeKey(source: String, id: String) { pool.remove(source, id); adminTick++ }
-    fun setKeyEnabled(source: String, id: String, v: Boolean) { pool.setEnabled(source, id, v); adminTick++ }
-    fun setSiteEnabled(source: String, v: Boolean) { pool.setSiteEnabled(source, v); adminTick++ }
+
+    private fun adminAction(block: suspend () -> Unit, onDone: (Boolean) -> Unit = {}) {
+        viewModelScope.launch {
+            var ok = false
+            try {
+                block()
+                ok = true
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: ApiException) {
+                msg(e.message ?: "فشلت العملية")
+            } catch (e: Exception) {
+                msg("حدث خطأ غير متوقع")
+            }
+            adminTick++
+            onDone(ok)
+        }
+    }
+
+    fun addKey(source: String, label: String, key: String, onDone: (Boolean) -> Unit) {
+        val k = key.trim()
+        if (k.isEmpty()) { msg("اكتب المفتاح أولًا"); onDone(false); return }
+        val name = label.trim().ifEmpty { "حساب ${pool.stored(source).size + 1}" }
+        adminAction({
+            val saved = sb.insertKey(source, name, k)
+            pool.putLocal(source, saved)
+            msg("تمت إضافة المفتاح")
+        }, onDone)
+    }
+
+    fun removeKey(source: String, id: String) = adminAction({
+        sb.deleteKey(id)
+        pool.remove(source, id)
+    })
+
+    fun setKeyEnabled(source: String, id: String, v: Boolean) = adminAction({
+        sb.setKeyEnabled(id, v)
+        pool.setEnabled(source, id, v)
+    })
+
+    fun setSiteEnabled(source: String, v: Boolean) = adminAction({
+        sb.setSite(source, v)
+        pool.setSiteEnabled(source, v)
+    })
 
     // ---- تصدير CSV ----
     private var csvText: String? = null

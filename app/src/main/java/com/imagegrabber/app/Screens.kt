@@ -517,13 +517,10 @@ fun FilterSheet(vm: AppViewModel) {
 @Composable
 fun AdminLoginDialog(vm: AppViewModel) {
     var email by remember { mutableStateOf("") }
-    var pin by remember { mutableStateOf("") }
-    var confirm by remember { mutableStateOf("") }
-    var err by remember { mutableStateOf<String?>(null) }
-    val first = !vm.adminHasPin()
+    var password by remember { mutableStateOf("") }
     AlertDialog(
-        onDismissRequest = { vm.showAdminLogin = false },
-        title = { Text(if (first) "إنشاء رمز المشرف" else "دخول المشرف") },
+        onDismissRequest = { if (!vm.adminBusy) { vm.adminError = null; vm.showAdminLogin = false } },
+        title = { Text("دخول المشرف") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
@@ -532,24 +529,24 @@ fun AdminLoginDialog(vm: AppViewModel) {
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email)
                 )
                 OutlinedTextField(
-                    value = pin, onValueChange = { pin = it.filter(Char::isDigit).take(12) }, singleLine = true,
-                    label = { Text(if (first) "رمز جديد (أرقام)" else "الرمز") },
+                    value = password, onValueChange = { password = it }, singleLine = true,
+                    label = { Text("كلمة المرور") },
                     visualTransformation = PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword)
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
                 )
-                if (first) {
-                    OutlinedTextField(
-                        value = confirm, onValueChange = { confirm = it.filter(Char::isDigit).take(12) },
-                        singleLine = true, label = { Text("تأكيد الرمز") },
-                        visualTransformation = PasswordVisualTransformation(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword)
-                    )
+                if (vm.adminBusy) CircularProgressIndicator()
+                vm.adminError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                TextButton(onClick = { vm.adminSignUp(email, password) }, enabled = !vm.adminBusy) {
+                    Text("أول مرة؟ إنشاء حساب المشرف")
                 }
-                err?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
         },
-        confirmButton = { TextButton(onClick = { err = vm.adminLogin(email, pin, confirm) }) { Text("دخول") } },
-        dismissButton = { TextButton(onClick = { vm.showAdminLogin = false }) { Text("إلغاء") } }
+        confirmButton = {
+            TextButton(onClick = { vm.adminLogin(email, password) }, enabled = !vm.adminBusy) { Text("دخول") }
+        },
+        dismissButton = {
+            TextButton(onClick = { vm.adminError = null; vm.showAdminLogin = false }, enabled = !vm.adminBusy) { Text("إلغاء") }
+        }
     )
 }
 
@@ -566,6 +563,7 @@ fun AdminScreen(vm: AppViewModel) {
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("لوحة التحكم", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+            TextButton(onClick = { vm.adminSignOut() }) { Text("خروج") }
             TextButton(onClick = { vm.lockAdmin() }) { Text("قفل") }
         }
         Text("المشرف: ${AdminConfig.EMAIL}", fontSize = 12.sp)
@@ -577,7 +575,7 @@ fun AdminScreen(vm: AppViewModel) {
         )
         SourceCatalog.all.forEach { info -> SourceCard(vm, info, tick) }
         Text(
-            "المفاتيح تُحفظ داخل التطبيق على هذا الهاتف فقط ولا تُرفع إلى أي مكان. " +
+            "المفاتيح محفوظة في مشروع Supabase الخاص بك (لا يقرؤها إلا حساب المشرف) وتُنسخ إلى هذا الهاتف للبحث. " +
                 "بعض المصادر تشترط ذكر المصوّر والمصدر؛ راجع ترخيص كل صورة قبل إعادة نشرها.",
             fontSize = 11.sp
         )
@@ -626,7 +624,7 @@ private fun SourceCard(vm: AppViewModel, info: SourceInfo, tick: Int) {
                     value = keyText, onValueChange = { keyText = it }, singleLine = true,
                     label = { Text("المفتاح") }, modifier = Modifier.fillMaxWidth()
                 )
-                Button(onClick = { if (vm.addKey(info.id, label, keyText)) { label = ""; keyText = "" } }) {
+                Button(onClick = { vm.addKey(info.id, label, keyText) { ok -> if (ok) { label = ""; keyText = "" } } }) {
                     Text("إضافة مفتاح")
                 }
             } else {

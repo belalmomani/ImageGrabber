@@ -14,6 +14,7 @@ class Repo private constructor(private val ctx: Context) {
     private val dao = db.images()
     private val hist = db.history()
     val pool = KeyPool.get(ctx)
+    val sb = SupabaseAdmin.get(ctx)
     private val sources: Map<String, ImageSource> = listOf(
         PexelsSource(pool), PixabaySource(pool), UnsplashSource(pool),
         FlickrSource(pool), OpenverseSource(), CommonsSource()
@@ -29,6 +30,26 @@ class Repo private constructor(private val ctx: Context) {
             return CompositeSource(active).search(q, page, perPage, filters)
         }
         return (sources[sel] ?: sources.getValue("commons")).search(q, page, perPage, filters)
+    }
+
+    /** سحب المفاتيح وإعدادات المواقع من Supabase إلى الجهاز (ورفع المحلية إن كان الخادم فارغًا). */
+    suspend fun syncFromRemote() {
+        var remote = sb.fetchKeys()
+        var pushed = false
+        for (src in SourceCatalog.keyed) {
+            if (remote[src].isNullOrEmpty()) {
+                for (k in pool.stored(src)) {
+                    try {
+                        sb.insertKey(src, k.label, k.key)
+                        pushed = true
+                    } catch (e: ApiException) {
+                    }
+                }
+            }
+        }
+        if (pushed) remote = sb.fetchKeys()
+        for (src in SourceCatalog.keyed) pool.replaceStored(src, remote[src].orEmpty())
+        sb.fetchSites().forEach { (s, v) -> pool.setSiteEnabled(s, v) }
     }
 
     fun observeTracked(): Flow<List<ImageEntity>> = dao.observeTracked()
