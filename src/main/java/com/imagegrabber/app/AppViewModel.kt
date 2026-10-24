@@ -1,0 +1,487 @@
+package com.imagegrabber.app
+
+import android.app.Application
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Intent
+import android.net.Uri
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.documentfile.provider.DocumentFile
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+
+sealed interface UiEvent {
+    class Msg(val text: String) : UiEvent
+    object PickFolder : UiEvent
+    object SaveCsv : UiEvent
+}
+
+class AppViewModel(app: Application) : AndroidViewModel(app) {
+    private val repo = Repo.get(app)
+    val pool = repo.pool
+    private val sb = repo.sb
+    private val events = Channel<UiEvent>(Channel.BUFFERED)
+    val uiEvents = events.receiveAsFlow()
+
+    // ---- البحث ----
+    var query by mutableStateOf("")
+    var filters by mutableStateOf(repo.settings.loadFilters())
+    var showFilters by mutableStateOf(false)
+    var results by mutableStateOf<List<ImageItem>>(emptyList())
+    var loading by mutableStateOf(false)
+    var error by mutableStateOf<String?>(null)
+    var hasNext by mutableStateOf(false)
+    var total by mutableStateOf(0)
+    var remaining by mutableStateOf<Int?>(null)
+    var selected by mutableStateOf<Set<String>>(emptySet())
+    var detail by mutableStateOf<ImageItem?>(null)
+    var pendingDownload by mutableStateOf<List<ImageItem>?>(null)
+
+    private var page = 1
+    private var activeQuery = ""
+    private var reqId = 0
+    val searched: Boolean get() = activeQuery.isNotBlank()
+
+    // ---- الإعدادات ----
+    var source by mutableStateOf(repo.settings.source)
+    var quality by mutableStateOf(repo.settings.quality)
+    var subfolders by mutableStateOf(repo.settings.subfolders)
+    var folderName by mutableStateOf<String?>(
+        repo.settings.folderUri?.let { DocumentFile.fromTreeUri(app, Uri.parse(it))?.name }
+    )
+
+    // ---- بيانات قاعدة البيانات ----
+    val tracked = repo.observeTracked()
+        .map { l -> l.associateBy { it.imageKey } }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
+    val favorites = repo.observeFavorites()
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    val downloads = repo.observeDownloads()
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    val history = repo.observeHistory()
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    // ---- كشف المكررات والمتشابهة ----
+    val libraryFp = repo.observeLibraryFp()
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    val exactDups = repo.observeExactDups()
+        .map { l -> l.map { it.imageKey }.toSet() }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
+
+    var fingerprints by mutableStateOf<Map<String, Long>>(emptyMap())
+    var dedupeCtx by mutableStateOf<DedupeContext?>(null)
+    var analyzing by mutableStateOf(false)
+    var preferred by mutableStateOf<Set<String>>(emptySet())
+    var blockDup by mutableStateOf(repo.settings.blockDup)
+    private var analysisJob: Job? = null
+    private var analysisRun = 0
+
+    init {
+        viewModelScope.launch { repo.recoverQueue() }
+        viewModelScope.launch { libraryFp.collect { recomputeDedupe() } }
+    }
+
+    private fun recomputeDedupe() {
+        dedupeCtx = if (filters.dedupe == null) null
+        else Dedupe.build(results, fingerprints, libraryFp.value, preferred, filters.dedupeLimit)
+    }
+
+    /** يحلّل بصمات الصور المصغّرة للنتائج (بحد أقصى dedupeLimit) على دفعات، ولا يعيد تحليل ما حُلِّل. */
+    fun ensureAnalysis() {
+        if (filters.dedupe == null) {
+            analysisJob?.cancel()
+            analyzing = false
+            dedupeCtx = null
+            return
+        }
+        val targets = results.take(filters.dedupeLimit).filter { it.key !in fingerprints }
+        if (targets.isEmpty()) {
+            recomputeDedupe()
+            return
+        }
+        analysisJob?.cancel()
+        val run = ++analysisRun
+        analysisJob = viewModelScope.launch {
+            analyzing = true
+            try {
+                repo.hashThumbs(targets, fingerprints) { got ->
+                    fingerprints = fingerprints + got
+                    recomputeDedupe()
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // فشل التحليل لا يعطّل البحث
+            } finally {
+                if (run == analysisRun) analyzing = false
+            }
+        }
+    }
+
+    /** اعتماد نسخة بعينها من مجموعة المتشابهات (تبقى هي الممثِّلة عند الإخفاء). */
+    fun choosePreferred(key: String) {
+        val d = dedupeCtx
+        val g = d?.simGroup?.get(key)
+        val members = if (d != null && g != null) {
+            results.filter { d.simGroup[it.key] == g }.map { it.key }.toSet()
+        } else setOf(key)
+        preferred = if (key in preferred) preferred - key else (preferred - members) + key
+        recomputeDedupe()
+    }
+
+    fun indexLibrary() {
+        viewModelScope.launch {
+            val list = repo.unindexedLibrary()
+            if (list.isEmpty()) { msg("المكتبة مفهرسة بالكامل"); return@launch }
+            msg("جارٍ فهرسة ${list.size} صورة…")
+            try {
+                val n = repo.indexLibrary(list)
+                msg("تمت فهرسة $n من ${list.size}")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                msg("تعذّرت الفهرسة")
+            }
+        }
+    }
+
+    fun setBlockDup(v: Boolean) { blockDup = v; repo.settings.blockDup = v }
+
+    private fun msg(t: String) { events.trySend(UiEvent.Msg(t)) }
+
+    // ---- البحث والصفحات ----
+    fun search() {
+        val q = query.trim()
+        if (q.isEmpty()) return
+        activeQuery = q
+        page = 1
+        results = emptyList()
+        selected = emptySet()
+        hasNext = false
+        error = null
+        total = 0
+        dedupeCtx = null
+        viewModelScope.launch { repo.saveHistory(q) }
+        load()
+    }
+
+    fun applyFilters(f: SearchFilters) {
+        val needSearch = filters.serverPart() != f.serverPart()
+        filters = f
+        repo.settings.saveFilters(f)
+        if (needSearch) refilter() else ensureAnalysis()
+    }
+
+    fun searchFrom(q: String) { query = q; search() }
+    fun refilter() { if (searched) search() }
+    fun loadMore() { if (!loading && hasNext && error == null) load() }
+    fun retryLoad() { if (searched) { error = null; load() } }
+
+    private fun load() {
+        val myId = ++reqId
+        loading = true
+        error = null
+        viewModelScope.launch {
+            try {
+                val r = repo.search(activeQuery, page, 30, filters)
+                if (myId != reqId) return@launch
+                val seen = results.map { it.key }.toHashSet()
+                results = results + r.items.filter { it.key !in seen }
+                hasNext = r.hasNext
+                total = r.total
+                if (r.remaining != null) remaining = r.remaining
+                page++
+                ensureAnalysis()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: ApiException) {
+                if (myId == reqId) error = e.message
+            } catch (e: Exception) {
+                if (myId == reqId) error = "حدث خطأ غير متوقع"
+            } finally {
+                if (myId == reqId) loading = false
+            }
+        }
+    }
+
+    // ---- التحديد ----
+    fun toggleSelect(key: String) {
+        selected = if (key in selected) selected - key else selected + key
+    }
+    fun selectAll(items: List<ImageItem>) { selected = items.map { it.key }.toSet() }
+    fun clearSelection() { selected = emptySet() }
+    fun selectedItems(): List<ImageItem> = results.filter { it.key in selected }
+
+    // ---- المفضلة والروابط ----
+    fun toggleFavorite(item: ImageItem) {
+        viewModelScope.launch { repo.toggleFavorite(item, activeQuery) }
+    }
+
+    fun copyLinks(items: List<ImageItem>) {
+        if (items.isEmpty()) return
+        val cm = getApplication<Application>().getSystemService(ClipboardManager::class.java)
+        cm.setPrimaryClip(ClipData.newPlainText("روابط الصور", items.joinToString("\n") { it.originalUrl }))
+        msg("تم نسخ ${items.size} رابط")
+    }
+
+    // ---- التنزيل ----
+    var pendingDupKeys by mutableStateOf<Set<String>>(emptySet())
+    var pendingChecking by mutableStateOf(false)
+    var includeDups by mutableStateOf(false)
+
+    fun requestDownload(items: List<ImageItem>) {
+        if (items.isEmpty()) return
+        pendingDownload = items
+        pendingDupKeys = emptySet()
+        includeDups = false
+        pendingChecking = false
+        if (!blockDup) return
+        pendingChecking = true
+        viewModelScope.launch {
+            try {
+                val doneNow = tracked.value.filterValues { it.status == Status.DONE }.keys
+                val fresh = repo.hashThumbs(items.filter { it.key !in doneNow }, fingerprints)
+                if (fresh.isNotEmpty()) fingerprints = fingerprints + fresh
+                val lib = libraryFp.value.filter { DHash.reliable(it.phash) }
+                val dups = items.filter { it.key !in doneNow }.filter { item ->
+                    val h = fingerprints[item.key]
+                    h != null && DHash.reliable(h) &&
+                        lib.any { l -> l.imageKey != item.key && DHash.distance(h, l.phash) <= DupGroups.DUP_T }
+                }.map { it.key }.toSet()
+                if (pendingDownload === items) pendingDupKeys = dups
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // تعذّر الفحص: لا نمنع التنزيل
+            } finally {
+                if (pendingDownload === items) pendingChecking = false
+            }
+        }
+    }
+
+    fun cancelDownloadRequest() { pendingDownload = null; pendingChecking = false }
+
+    fun estimateBytes(items: List<ImageItem>): Long {
+        val orig = quality == "ORIGINAL"
+        return items.filter { tracked.value[it.key]?.status != Status.DONE }.sumOf {
+            if (orig) it.width.toLong() * it.height * 35L / 100L else 450_000L
+        }
+    }
+
+    fun confirmDownload() {
+        val all = pendingDownload ?: return
+        if (pendingChecking) return
+        val items = if (includeDups) all else all.filter { it.key !in pendingDupKeys }
+        if (items.isEmpty()) {
+            pendingDownload = null
+            msg("كل الصور مطابقة لما في مكتبتك")
+            return
+        }
+        if (repo.settings.folderUri == null) {
+            events.trySend(UiEvent.PickFolder)
+            return
+        }
+        pendingDownload = null
+        viewModelScope.launch {
+            val n = repo.queueDownload(items, activeQuery)
+            msg(if (n == 0) "الصور محفوظة أو في الطابور مسبقًا" else "أُضيفت $n صورة إلى الطابور")
+            selected = emptySet()
+        }
+    }
+
+    fun onFolderPicked(uri: Uri) {
+        val ctx = getApplication<Application>()
+        try {
+            ctx.contentResolver.takePersistableUriPermission(
+                uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            )
+        } catch (e: Exception) {
+            msg("تعذّر حفظ صلاحية المجلد")
+            return
+        }
+        repo.settings.folderUri = uri.toString()
+        folderName = DocumentFile.fromTreeUri(ctx, uri)?.name
+        if (pendingDownload != null) confirmDownload()
+    }
+
+    fun pickFolder() { events.trySend(UiEvent.PickFolder) }
+    fun pauseDownloads() { viewModelScope.launch { repo.pause(); msg("تم الإيقاف المؤقت") } }
+    fun resumeDownloads() { viewModelScope.launch { repo.resume() } }
+    fun retryFailed() { viewModelScope.launch { repo.retryFailed() } }
+    fun retry(key: String) { viewModelScope.launch { repo.retryKey(key) } }
+
+    // ---- الإعدادات ----
+    fun setSourcePref(v: String) {
+        source = v
+        repo.settings.source = v
+        if (searched) search()
+    }
+    fun setQualityPref(q: String) { quality = q; repo.settings.quality = q }
+    fun setSubfoldersPref(v: Boolean) { subfolders = v; repo.settings.subfolders = v }
+    fun clearHistory() { viewModelScope.launch { repo.clearHistory() } }
+
+    // ---- لوحة التحكم (Supabase) ----
+    var showAdminLogin by mutableStateOf(false)
+    var adminOpen by mutableStateOf(false)
+    var adminTick by mutableStateOf(0)
+    var adminBusy by mutableStateOf(false)
+    var adminError by mutableStateOf<String?>(null)
+
+    init {
+        // مزامنة صامتة عند فتح التطبيق إن كانت هناك جلسة مشرف محفوظة
+        viewModelScope.launch {
+            if (sb.hasSession()) {
+                try { repo.syncFromRemote(); adminTick++ } catch (e: Exception) { }
+            }
+        }
+    }
+
+    private fun checkAdminInput(email: String, password: String): Boolean {
+        if (!email.trim().equals(AdminConfig.EMAIL, ignoreCase = true)) {
+            adminError = "هذا البريد غير مصرّح له"
+            return false
+        }
+        if (password.length < 6) {
+            adminError = "كلمة المرور 6 أحرف على الأقل"
+            return false
+        }
+        return true
+    }
+
+    fun adminLogin(email: String, password: String) {
+        if (!checkAdminInput(email, password)) return
+        viewModelScope.launch {
+            adminBusy = true
+            adminError = null
+            try {
+                sb.signIn(email.trim(), password)
+                repo.syncFromRemote()
+                showAdminLogin = false
+                adminOpen = true
+                adminTick++
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: ApiException) {
+                adminError = e.message
+            } catch (e: Exception) {
+                adminError = "حدث خطأ غير متوقع"
+            } finally {
+                adminBusy = false
+            }
+        }
+    }
+
+    fun adminSignUp(email: String, password: String) {
+        if (!checkAdminInput(email, password)) return
+        viewModelScope.launch {
+            adminBusy = true
+            adminError = null
+            try {
+                sb.signUp(email.trim(), password)
+                msg("أُرسلت رسالة تأكيد إلى بريدك. أكّدها ثم سجّل الدخول.")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: ApiException) {
+                adminError = e.message
+            } catch (e: Exception) {
+                adminError = "حدث خطأ غير متوقع"
+            } finally {
+                adminBusy = false
+            }
+        }
+    }
+
+    fun lockAdmin() { adminOpen = false }
+
+    fun adminSignOut() {
+        sb.signOut()
+        adminOpen = false
+        msg("تم تسجيل الخروج. تبقى المفاتيح المحفوظة على الجهاز للبحث.")
+    }
+
+    private fun adminAction(block: suspend () -> Unit, onDone: (Boolean) -> Unit = {}) {
+        viewModelScope.launch {
+            var ok = false
+            try {
+                block()
+                ok = true
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: ApiException) {
+                msg(e.message ?: "فشلت العملية")
+            } catch (e: Exception) {
+                msg("حدث خطأ غير متوقع")
+            }
+            adminTick++
+            onDone(ok)
+        }
+    }
+
+    fun addKey(source: String, label: String, key: String, onDone: (Boolean) -> Unit) {
+        val k = key.trim()
+        if (k.isEmpty()) { msg("اكتب المفتاح أولًا"); onDone(false); return }
+        val name = label.trim().ifEmpty { "حساب ${pool.stored(source).size + 1}" }
+        adminAction({
+            val saved = sb.insertKey(source, name, k)
+            pool.putLocal(source, saved)
+            msg("تمت إضافة المفتاح")
+        }, onDone)
+    }
+
+    fun removeKey(source: String, id: String) = adminAction({
+        sb.deleteKey(id)
+        pool.remove(source, id)
+    })
+
+    fun setKeyEnabled(source: String, id: String, v: Boolean) = adminAction({
+        sb.setKeyEnabled(id, v)
+        pool.setEnabled(source, id, v)
+    })
+
+    fun setSiteEnabled(source: String, v: Boolean) = adminAction({
+        sb.setSite(source, v)
+        pool.setSiteEnabled(source, v)
+    })
+
+    // ---- تصدير CSV ----
+    private var csvText: String? = null
+
+    fun exportItems(items: List<ImageItem>) {
+        if (items.isEmpty()) return
+        viewModelScope.launch { prepareCsv(repo.ensure(items, activeQuery)) }
+    }
+
+    fun exportEntities(list: List<ImageEntity>) = prepareCsv(list)
+
+    private fun prepareCsv(ents: List<ImageEntity>) {
+        if (ents.isEmpty()) { msg("لا توجد عناصر للتصدير"); return }
+        csvText = Csv.build(ents)
+        events.trySend(UiEvent.SaveCsv)
+    }
+
+    fun onCsvTarget(uri: Uri?) {
+        val text = csvText ?: return
+        if (uri == null) return
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                getApplication<Application>().contentResolver.openOutputStream(uri, "wt")?.use {
+                    it.write(text.toByteArray(Charsets.UTF_8))
+                }
+                msg("تم حفظ ملف CSV")
+            } catch (e: Exception) {
+                msg("تعذّر حفظ الملف")
+            }
+        }
+    }
+}
