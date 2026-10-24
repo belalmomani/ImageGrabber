@@ -25,7 +25,10 @@ class SettingsStore(ctx: Context) {
         hideDownloaded = p.getBoolean("f_hidedone", false),
         exclude = p.getString("f_exclude", "").orEmpty(),
         sortBy = p.getString("f_sort", null),
-        onlySources = p.getString("f_sources", "").orEmpty()
+        onlySources = p.getString("f_sources", "").orEmpty(),
+        background = p.getString("f_bg", null),
+        style = p.getString("f_style", null),
+        format = p.getString("f_format", null)
     )
 
     fun saveFilters(f: SearchFilters) {
@@ -45,6 +48,9 @@ class SettingsStore(ctx: Context) {
             .putString("f_exclude", f.exclude)
             .putString("f_sort", f.sortBy)
             .putString("f_sources", f.onlySources)
+            .putString("f_bg", f.background)
+            .putString("f_style", f.style)
+            .putString("f_format", f.format)
             .apply()
     }
 

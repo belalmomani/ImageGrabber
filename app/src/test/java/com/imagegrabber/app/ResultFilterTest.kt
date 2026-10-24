@@ -54,3 +54,35 @@ class ResultFilterTest {
         assertEquals("t:4", r.last().key)
     }
 }
+
+class CatalogsTest {
+    @Test fun extOfHandlesUrls() {
+        assertEquals("jpg", ResultFilter.extOf("https://x.com/a/pexels-photo-1.jpeg?auto=compress"))
+        assertEquals("png", ResultFilter.extOf("https://upload.wikimedia.org/a/b/File.PNG"))
+        assertEquals("jpg", ResultFilter.extOf("https://images.unsplash.com/photo-123?fm=jpg&q=85"))
+        assertEquals(null, ResultFilter.extOf("https://images.unsplash.com/photo-123"))
+    }
+
+    @Test fun formatFilterKeepsUnknown() {
+        fun it(id: String, url: String) = ImageItem("t:$id", "t", id, "", "", url, "", "P", "", "L", 1, 1, "")
+        val items = listOf(it("1", "https://a/1.png"), it("2", "https://a/2.jpg"), it("3", "https://a/3"))
+        val r = ResultFilter.apply(items, SearchFilters(format = "png"), emptySet(), emptySet())
+        assertEquals(listOf("t:1", "t:3"), r.map { x -> x.key })
+    }
+
+    @Test fun styleAndBackgroundWords() {
+        val f = SearchFilters(style = "3d", background = "transparent")
+        assertEquals("3d render transparent background png", Styles.extras(f))
+        assertEquals("cat 3d render transparent background png", Styles.build(" cat ", f))
+        assertEquals("cat", Styles.build("cat", SearchFilters()))
+    }
+
+    @Test fun colorMappings() {
+        assertEquals("lilac", ColorCatalog.get("violet")?.pixabay)
+        assertEquals("#FFD700", ColorCatalog.get("gold")?.pexels)
+        assertEquals("black_and_white", ColorCatalog.get("grayscale")?.unsplash)
+        assertEquals(null, ColorCatalog.get("nope"))
+        assertTrue(ColorCatalog.all.size >= 25)
+        assertEquals(ColorCatalog.all.size, ColorCatalog.all.map { x -> x.id }.toSet().size)
+    }
+}

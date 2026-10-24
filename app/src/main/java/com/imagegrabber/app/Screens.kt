@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
+@file:OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 
 package com.imagegrabber.app
 
@@ -12,6 +12,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -27,6 +28,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -172,6 +174,10 @@ fun SearchScreen(vm: AppViewModel) {
             if (n > 0) TextButton(onClick = { vm.applyFilters(SearchFilters()) }) { Text("مسح الفلاتر") }
         }
         if (vm.showFilters) FilterSheet(vm)
+        if (vm.searched) {
+            val extra = Styles.extras(vm.filters)
+            if (extra.isNotBlank()) Text("كلمات مضافة للبحث: $extra", fontSize = 11.sp)
+        }
 
         if (selecting) {
             val sel = vm.selectedItems()
@@ -438,9 +444,23 @@ fun DownloadConfirmDialog(vm: AppViewModel, items: List<ImageItem>) {
 @Composable
 private fun ChipGroup(title: String, options: List<Pair<String?, String>>, selected: String?, onSelect: (String?) -> Unit) {
     Text(title, style = MaterialTheme.typography.titleMedium)
-    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         options.forEach { (v, l) ->
             FilterChip(selected = selected == v, onClick = { onSelect(v) }, label = { Text(l) })
+        }
+    }
+}
+
+@Composable
+private fun ColorChips(selected: String?, onSelect: (String?) -> Unit) {
+    Text("اللون", style = MaterialTheme.typography.titleMedium)
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        FilterChip(selected = selected == null, onClick = { onSelect(null) }, label = { Text("الكل") })
+        ColorCatalog.all.forEach { c ->
+            FilterChip(
+                selected = selected == c.id, onClick = { onSelect(c.id) }, label = { Text(c.label) },
+                leadingIcon = { Box(Modifier.size(14.dp).clip(CircleShape).background(Color(c.swatch))) }
+            )
         }
     }
 }
@@ -449,11 +469,6 @@ private fun ChipGroup(title: String, options: List<Pair<String?, String>>, selec
 fun FilterSheet(vm: AppViewModel) {
     var f by remember { mutableStateOf(vm.filters) }
     val caps = SourceCatalog.caps(vm.source)
-    val colors = listOf<Pair<String?, String>>(
-        null to "الكل", "red" to "أحمر", "orange" to "برتقالي", "yellow" to "أصفر", "green" to "أخضر",
-        "turquoise" to "تركواز", "blue" to "أزرق", "violet" to "بنفسجي", "pink" to "وردي",
-        "brown" to "بني", "black" to "أسود", "gray" to "رمادي", "white" to "أبيض"
-    )
     val categories = listOf<Pair<String?, String>>(
         null to "الكل", "backgrounds" to "خلفيات", "fashion" to "أزياء", "nature" to "طبيعة", "science" to "علوم",
         "education" to "تعليم", "feelings" to "مشاعر", "health" to "صحة", "people" to "أشخاص", "religion" to "دين",
@@ -476,7 +491,7 @@ fun FilterSheet(vm: AppViewModel) {
                 }
                 ChipGroup("الاتجاه", orient, f.orientation) { f = f.copy(orientation = it) }
             }
-            if ("color" in caps) ChipGroup("اللون", colors, f.color) { f = f.copy(color = it) }
+            if ("color" in caps) ColorChips(f.color) { f = f.copy(color = it) }
             if ("size" in caps) {
                 ChipGroup(
                     "الحجم",
@@ -488,6 +503,7 @@ fun FilterSheet(vm: AppViewModel) {
                 val types = buildList<Pair<String?, String>> {
                     add(null to "الكل"); add("photo" to "فوتوغرافية"); add("illustration" to "رسم")
                     if ("vector" in caps) add("vector" to "فيكتور")
+                    if ("artwork" in caps) add("artwork" to "عمل فني")
                 }
                 ChipGroup("نوع الصورة", types, f.imageType) { f = f.copy(imageType = it) }
             }
@@ -512,6 +528,22 @@ fun FilterSheet(vm: AppViewModel) {
                     Text("  اختيار المحررين فقط")
                 }
             }
+            ChipGroup(
+                "الخلفية",
+                listOf<Pair<String?, String>>(null to "الكل") + Styles.backgrounds,
+                f.background
+            ) { f = f.copy(background = it) }
+            ChipGroup(
+                "الأسلوب / النوع",
+                listOf<Pair<String?, String>>(null to "الكل") + Styles.styles,
+                f.style
+            ) { f = f.copy(style = it) }
+            ChipGroup(
+                "صيغة الملف",
+                listOf<Pair<String?, String>>(null to "الكل", "jpg" to "JPG", "png" to "PNG", "webp" to "WEBP", "gif" to "GIF"),
+                f.format
+            ) { f = f.copy(format = it) }
+            Text("الخلفية والأسلوب يضيفان كلمات إنجليزية لبحثك؛ الأفضل أن تكتب بحثك بالإنجليزية.", fontSize = 11.sp)
             if ("minHeight" in caps) {
                 ChipGroup(
                     "أقل ارتفاع (بكسل)",

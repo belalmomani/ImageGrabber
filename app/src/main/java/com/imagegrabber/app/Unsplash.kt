@@ -24,15 +24,7 @@ class UnsplashSource(private val pool: KeyPool) : ImageSource {
                     "square" -> addQueryParameter("orientation", "squarish")
                     else -> {}
                 }
-                val c = when (filters.color) {
-                    "turquoise" -> "teal"
-                    "violet" -> "purple"
-                    "pink" -> "magenta"
-                    "gray" -> "black_and_white"
-                    "red", "orange", "yellow", "green", "blue", "black", "white" -> filters.color
-                    else -> null
-                }
-                if (c != null) addQueryParameter("color", c)
+                ColorCatalog.get(filters.color)?.unsplash?.let { addQueryParameter("color", it) }
             }
             .build()
         val res = Http.get(url, mapOf("Authorization" to "Client-ID $key", "Accept-Version" to "v1"))

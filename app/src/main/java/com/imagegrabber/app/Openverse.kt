@@ -25,10 +25,12 @@ class OpenverseSource : ImageSource {
                     else -> {}
                 }
                 filters.size?.let { addQueryParameter("size", it) }
+                filters.format?.let { addQueryParameter("extension", it) }
                 if (filters.commercialOnly) addQueryParameter("license_type", "commercial")
                 when (filters.imageType) {
                     "photo" -> addQueryParameter("category", "photograph")
                     "illustration" -> addQueryParameter("category", "illustration")
+                    "artwork" -> addQueryParameter("category", "digitized_artwork")
                     else -> {}
                 }
             }

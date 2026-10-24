@@ -26,7 +26,11 @@ class PixabaySource(private val pool: KeyPool) : ImageSource {
                     else -> {}
                 }
                 filters.category?.let { addQueryParameter("category", it) }
-                filters.color?.let { addQueryParameter("colors", if (it == "violet") "lilac" else it) }
+                val cols = listOfNotNull(
+                    ColorCatalog.get(filters.color)?.pixabay,
+                    if (filters.background == "transparent") "transparent" else null
+                ).distinct()
+                if (cols.isNotEmpty()) addQueryParameter("colors", cols.joinToString(","))
                 filters.order?.let { addQueryParameter("order", it) }
                 if (filters.editorsChoice) addQueryParameter("editors_choice", "true")
                 if (filters.minWidth > 0) addQueryParameter("min_width", filters.minWidth.toString())

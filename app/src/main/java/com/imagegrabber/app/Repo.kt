@@ -21,6 +21,7 @@ class Repo private constructor(private val ctx: Context) {
     ).associateBy { it.id }
 
     suspend fun search(q: String, page: Int, perPage: Int, filters: SearchFilters): SearchResult {
+        val qq = Styles.build(q, filters)
         val sel = settings.source
         if (sel == "all") {
             val only = filters.onlySources.split(",").filter { it.isNotBlank() }.toSet()
@@ -29,9 +30,9 @@ class Repo private constructor(private val ctx: Context) {
                     pool.siteEnabled(it.id) && (!SourceCatalog.byId(it.id).needsKey || pool.hasUsable(it.id))
             }
             if (active.isEmpty()) throw ApiException("لا توجد مصادر مفعّلة. أضف مفاتيح من لوحة التحكم.")
-            return CompositeSource(active).search(q, page, perPage, filters)
+            return CompositeSource(active).search(qq, page, perPage, filters)
         }
-        return (sources[sel] ?: sources.getValue("commons")).search(q, page, perPage, filters)
+        return (sources[sel] ?: sources.getValue("commons")).search(qq, page, perPage, filters)
     }
 
     /** سحب المفاتيح وإعدادات المواقع من Supabase إلى الجهاز (ورفع المحلية إن كان الخادم فارغًا). */

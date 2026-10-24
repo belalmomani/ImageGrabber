@@ -100,7 +100,10 @@ data class SearchFilters(
     val hideDownloaded: Boolean = false,
     val exclude: String = "",           // كلمات مستبعدة مفصولة بفاصلة
     val sortBy: String? = null,         // big / small (ترتيب العرض)
-    val onlySources: String = ""        // في وضع «كل المصادر»: معرّفات مفصولة بفاصلة (فارغ = الكل)
+    val onlySources: String = "",       // في وضع «كل المصادر»: معرّفات مفصولة بفاصلة (فارغ = الكل)
+    val background: String? = null,     // يُضاف ككلمات للبحث (وPixabay يدعم الشفافية فعليًا)
+    val style: String? = null,          // أسلوب/نوع إضافي كلمات للبحث
+    val format: String? = null          // jpg / png / webp / gif
 ) {
     fun activeCount(caps: Set<String>): Int {
         var n = 0
@@ -119,6 +122,9 @@ data class SearchFilters(
         if (hideDownloaded) n++
         if (exclude.isNotBlank()) n++
         if (sortBy != null) n++
+        if (background != null) n++
+        if (style != null) n++
+        if (format != null) n++
         return n
     }
 }

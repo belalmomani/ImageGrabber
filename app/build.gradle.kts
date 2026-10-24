@@ -28,8 +28,8 @@ android {
         applicationId = "com.imagegrabber.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 8
-        versionName = "0.10.0"
+        versionCode = 9
+        versionName = "0.11.0"
         buildConfigField("String", "PEXELS_API_KEY", "\"$pexelsKey\"")
         buildConfigField("String", "PIXABAY_API_KEY", "\"$pixabayKey\"")
         buildConfigField("String", "SUPABASE_URL", "\"$sbUrl\"")

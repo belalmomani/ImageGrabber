@@ -18,7 +18,7 @@ class PexelsSource(private val pool: KeyPool) : ImageSource {
             .apply {
                 filters.orientation?.let { addQueryParameter("orientation", it) }
                 filters.size?.let { addQueryParameter("size", it) }
-                filters.color?.let { addQueryParameter("color", it) }
+                ColorCatalog.get(filters.color)?.pexels?.let { addQueryParameter("color", it) }
             }
             .build()
         val res = Http.get(url, mapOf("Authorization" to key))

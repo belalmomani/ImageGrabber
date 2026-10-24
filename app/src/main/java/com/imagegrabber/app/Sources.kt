@@ -40,7 +40,7 @@ object SourceCatalog {
         SourceInfo(
             "openverse", "Openverse", false, "https://openverse.org/", "",
             "بلا مفتاح (وصول مجهول بحدود تصفح ضيقة). صور مفتوحة الترخيص.",
-            setOf("orientation", "square", "size", "type")
+            setOf("orientation", "square", "size", "type", "artwork")
         ),
         SourceInfo(
             "commons", "Wikimedia Commons", false, "https://commons.wikimedia.org/", "",
