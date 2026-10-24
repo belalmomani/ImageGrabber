@@ -84,16 +84,23 @@ fun ImageEntity.toItem() = ImageItem(
     width = width, height = height, alt = alt, extra = extra
 )
 
-/** فلاتر البحث. كل مصدر يستخدم ما يدعمه فقط. */
+/** فلاتر البحث. كل مصدر يستخدم ما يدعمه فقط، وبعضها يُطبَّق داخل التطبيق على كل المصادر. */
 data class SearchFilters(
-    val orientation: String? = null,   // landscape / portrait / square
-    val size: String? = null,          // Pexels: large / medium / small
+    val orientation: String? = null,    // landscape / portrait / square
+    val size: String? = null,           // Pexels / Openverse
     val color: String? = null,
-    val imageType: String? = null,     // Pixabay: photo / illustration / vector
-    val category: String? = null,      // Pixabay
-    val order: String? = null,         // Pixabay: popular / latest
-    val editorsChoice: Boolean = false,// Pixabay
-    val minWidth: Int = 0              // Pixabay
+    val imageType: String? = null,      // photo / illustration / vector
+    val category: String? = null,       // Pixabay
+    val order: String? = null,          // latest / popular
+    val editorsChoice: Boolean = false, // Pixabay
+    val minWidth: Int = 0,              // Pixabay
+    val minHeight: Int = 0,             // Pixabay
+    val minMp: Int = 0,                 // ميغابكسل (داخل التطبيق)
+    val commercialOnly: Boolean = false,
+    val hideDownloaded: Boolean = false,
+    val exclude: String = "",           // كلمات مستبعدة مفصولة بفاصلة
+    val sortBy: String? = null,         // big / small (ترتيب العرض)
+    val onlySources: String = ""        // في وضع «كل المصادر»: معرّفات مفصولة بفاصلة (فارغ = الكل)
 ) {
     fun activeCount(caps: Set<String>): Int {
         var n = 0
@@ -105,6 +112,13 @@ data class SearchFilters(
         if ("order" in caps && order != null) n++
         if ("editors" in caps && editorsChoice) n++
         if ("minWidth" in caps && minWidth > 0) n++
+        if ("minHeight" in caps && minHeight > 0) n++
+        if ("sources" in caps && onlySources.isNotBlank()) n++
+        if (minMp > 0) n++
+        if (commercialOnly) n++
+        if (hideDownloaded) n++
+        if (exclude.isNotBlank()) n++
+        if (sortBy != null) n++
         return n
     }
 }

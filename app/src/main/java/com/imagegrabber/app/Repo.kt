@@ -23,8 +23,10 @@ class Repo private constructor(private val ctx: Context) {
     suspend fun search(q: String, page: Int, perPage: Int, filters: SearchFilters): SearchResult {
         val sel = settings.source
         if (sel == "all") {
+            val only = filters.onlySources.split(",").filter { it.isNotBlank() }.toSet()
             val active = sources.values.filter {
-                pool.siteEnabled(it.id) && (!SourceCatalog.byId(it.id).needsKey || pool.hasUsable(it.id))
+                (only.isEmpty() || it.id in only) &&
+                    pool.siteEnabled(it.id) && (!SourceCatalog.byId(it.id).needsKey || pool.hasUsable(it.id))
             }
             if (active.isEmpty()) throw ApiException("لا توجد مصادر مفعّلة. أضف مفاتيح من لوحة التحكم.")
             return CompositeSource(active).search(q, page, perPage, filters)

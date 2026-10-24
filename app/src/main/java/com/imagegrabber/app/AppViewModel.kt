@@ -131,7 +131,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun toggleSelect(key: String) {
         selected = if (key in selected) selected - key else selected + key
     }
-    fun selectAll() { selected = results.map { it.key }.toSet() }
+    fun selectAll(items: List<ImageItem>) { selected = items.map { it.key }.toSet() }
     fun clearSelection() { selected = emptySet() }
     fun selectedItems(): List<ImageItem> = results.filter { it.key in selected }
 

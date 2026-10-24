@@ -22,7 +22,7 @@ class FlickrSource(private val pool: KeyPool) : ImageSource {
             .addQueryParameter("media", "photos")
             .addQueryParameter("content_type", "1")
             // فقط تراخيص Creative Commons والملكية العامة (بدون "جميع الحقوق محفوظة")
-            .addQueryParameter("license", "1,2,3,4,5,6,7,8,9,10")
+            .addQueryParameter("license", if (filters.commercialOnly) "4,5,6,7,8,9,10" else "1,2,3,4,5,6,7,8,9,10")
             .addQueryParameter("safe_search", "1")
             .addQueryParameter("sort", if (filters.order == "latest") "date-posted-desc" else "relevance")
             .addQueryParameter("extras", "url_m,url_l,url_o,owner_name,license,o_dims")

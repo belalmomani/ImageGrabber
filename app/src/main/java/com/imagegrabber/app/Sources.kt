@@ -25,7 +25,7 @@ object SourceCatalog {
         SourceInfo(
             "pixabay", "Pixabay", true, "https://pixabay.com/api/docs/", "API Key",
             "حد نحو 100 طلب/دقيقة لكل مفتاح.",
-            setOf("orientation", "color", "type", "vector", "category", "minWidth", "order", "popular", "editors")
+            setOf("orientation", "color", "type", "vector", "category", "minWidth", "minHeight", "order", "popular", "editors")
         ),
         SourceInfo(
             "unsplash", "Unsplash", true, "https://unsplash.com/oauth/applications", "Access Key",
@@ -35,7 +35,7 @@ object SourceCatalog {
         SourceInfo(
             "flickr", "Flickr", true, "https://www.flickr.com/services/apps/create/", "API Key",
             "مفتاح غير تجاري مجاني. تُعرض فقط الصور ذات ترخيص Creative Commons أو الملكية العامة.",
-            setOf("order")
+            setOf("orientation", "square", "order")
         ),
         SourceInfo(
             "openverse", "Openverse", false, "https://openverse.org/", "",
@@ -45,13 +45,13 @@ object SourceCatalog {
         SourceInfo(
             "commons", "Wikimedia Commons", false, "https://commons.wikimedia.org/", "",
             "بلا مفتاح. يدعم البحث بالعربية جيدًا. تراخيص متنوعة تظهر مع كل صورة.",
-            emptySet()
+            setOf("orientation", "square")
         )
     )
 
     val keyed: List<String> get() = all.filter { it.needsKey }.map { it.id }
 
-    private val allCaps = setOf("orientation", "size", "color", "type", "order")
+    private val allCaps = setOf("orientation", "square", "size", "color", "type", "order", "sources")
 
     fun byId(id: String): SourceInfo = all.firstOrNull { it.id == id } ?: all.first()
     fun name(id: String): String = all.firstOrNull { it.id == id }?.name ?: id

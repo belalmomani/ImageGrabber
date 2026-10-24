@@ -18,7 +18,14 @@ class SettingsStore(ctx: Context) {
         category = p.getString("f_category", null),
         order = p.getString("f_order", null),
         editorsChoice = p.getBoolean("f_editors", false),
-        minWidth = p.getInt("f_minw", 0)
+        minWidth = p.getInt("f_minw", 0),
+        minHeight = p.getInt("f_minh", 0),
+        minMp = p.getInt("f_minmp", 0),
+        commercialOnly = p.getBoolean("f_commercial", false),
+        hideDownloaded = p.getBoolean("f_hidedone", false),
+        exclude = p.getString("f_exclude", "").orEmpty(),
+        sortBy = p.getString("f_sort", null),
+        onlySources = p.getString("f_sources", "").orEmpty()
     )
 
     fun saveFilters(f: SearchFilters) {
@@ -31,6 +38,13 @@ class SettingsStore(ctx: Context) {
             .putString("f_order", f.order)
             .putBoolean("f_editors", f.editorsChoice)
             .putInt("f_minw", f.minWidth)
+            .putInt("f_minh", f.minHeight)
+            .putInt("f_minmp", f.minMp)
+            .putBoolean("f_commercial", f.commercialOnly)
+            .putBoolean("f_hidedone", f.hideDownloaded)
+            .putString("f_exclude", f.exclude)
+            .putString("f_sort", f.sortBy)
+            .putString("f_sources", f.onlySources)
             .apply()
     }
 

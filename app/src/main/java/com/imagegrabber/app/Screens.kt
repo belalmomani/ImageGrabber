@@ -136,11 +136,16 @@ fun SearchScreen(vm: AppViewModel) {
     val gridState = rememberLazyGridState()
     val focus = LocalFocusManager.current
     val selecting = vm.selected.isNotEmpty()
+    val doneKeys = remember(tracked) { tracked.filterValues { it.status == Status.DONE }.keys }
+    val shown = remember(vm.results, vm.filters, tracked, vm.source) {
+        ResultFilter.apply(vm.results, vm.filters, SourceCatalog.caps(vm.source), doneKeys)
+    }
 
     LaunchedEffect(gridState) {
         snapshotFlow {
-            val last = gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-            Triple(last >= gridState.layoutInfo.totalItemsCount - 6, vm.results.size, vm.loading)
+            val vis = gridState.layoutInfo.visibleItemsInfo
+            val last = vis.lastOrNull()?.index ?: 0
+            Triple(vis.isNotEmpty() && last >= gridState.layoutInfo.totalItemsCount - 6, vm.results.size, vm.loading)
         }.filter { it.first && !it.third }.collect { vm.loadMore() }
     }
 
@@ -172,7 +177,7 @@ fun SearchScreen(vm: AppViewModel) {
             val sel = vm.selectedItems()
             Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
                 Text("${sel.size} محددة", modifier = Modifier.padding(horizontal = 8.dp))
-                TextButton(onClick = { vm.selectAll() }) { Text("الكل") }
+                TextButton(onClick = { vm.selectAll(shown) }) { Text("الكل") }
                 TextButton(onClick = { vm.requestDownload(sel) }) { Text("تنزيل") }
                 TextButton(onClick = { vm.copyLinks(sel) }) { Text("نسخ الروابط") }
                 TextButton(onClick = { vm.exportItems(sel) }) { Text("CSV") }
@@ -181,7 +186,7 @@ fun SearchScreen(vm: AppViewModel) {
         } else if (vm.searched) {
             val rem = vm.remaining?.let { " • متبقٍّ من حد الطلبات: $it" } ?: ""
             Text(
-                "النتائج: ${vm.total}$rem  (اضغط مطولًا للتحديد)",
+                "النتائج: ${vm.total} • معروض: ${shown.size}$rem  (اضغط مطولًا للتحديد)",
                 fontSize = 12.sp, modifier = Modifier.padding(vertical = 4.dp)
             )
         }
@@ -193,7 +198,7 @@ fun SearchScreen(vm: AppViewModel) {
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxSize()
             ) {
-                items(vm.results, key = { it.key }) { item ->
+                items(shown, key = { it.key }) { item ->
                     ImageCell(
                         item = item, rec = tracked[item.key], selected = item.key in vm.selected,
                         onClick = { if (selecting) vm.toggleSelect(item.key) else vm.detail = item },
@@ -216,14 +221,19 @@ fun SearchScreen(vm: AppViewModel) {
                     }
                 }
             }
-            if (vm.results.isEmpty() && !vm.loading && vm.error == null) {
+            if (shown.isEmpty() && !vm.loading && vm.error == null) {
                 Column(
                     Modifier.fillMaxSize().padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     if (vm.searched) {
-                        Text("لا توجد نتائج. جرّب كلمة أخرى (الإنجليزية غالبًا أدق في Pexels).")
+                        if (vm.results.isNotEmpty()) {
+                            Text("استُبعدت كل النتائج المحمّلة بسبب الفلاتر.")
+                            if (vm.hasNext) OutlinedButton(onClick = { vm.loadMore() }) { Text("تحميل المزيد") }
+                        } else {
+                            Text("لا توجد نتائج. جرّب كلمة أخرى (الإنجليزية غالبًا أدق).")
+                        }
                     } else {
                         Text("اكتب اسمًا واضغط «بحث».")
                         history.forEach { h ->
@@ -502,6 +512,51 @@ fun FilterSheet(vm: AppViewModel) {
                     Text("  اختيار المحررين فقط")
                 }
             }
+            if ("minHeight" in caps) {
+                ChipGroup(
+                    "أقل ارتفاع (بكسل)",
+                    listOf<Pair<String?, String>>(null to "الكل", "600" to "600", "1080" to "1080", "1440" to "1440", "2160" to "2160"),
+                    if (f.minHeight > 0) f.minHeight.toString() else null
+                ) { f = f.copy(minHeight = it?.toIntOrNull() ?: 0) }
+            }
+            ChipGroup(
+                "أقل دقة (ميغابكسل)",
+                listOf<Pair<String?, String>>(null to "الكل", "2" to "2+", "4" to "4+", "8" to "8+", "12" to "12+"),
+                if (f.minMp > 0) f.minMp.toString() else null
+            ) { f = f.copy(minMp = it?.toIntOrNull() ?: 0) }
+            ChipGroup(
+                "ترتيب العرض",
+                listOf<Pair<String?, String>>(null to "كما وصل", "big" to "الأكبر أولًا", "small" to "الأصغر أولًا"),
+                f.sortBy
+            ) { f = f.copy(sortBy = it) }
+            if ("sources" in caps) {
+                Text("المصادر المشمولة (فارغ = الكل)", style = MaterialTheme.typography.titleMedium)
+                val chosen = f.onlySources.split(",").filter { it.isNotBlank() }.toSet()
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    SourceCatalog.all.forEach { info ->
+                        FilterChip(
+                            selected = info.id in chosen,
+                            onClick = {
+                                val n = if (info.id in chosen) chosen - info.id else chosen + info.id
+                                f = f.copy(onlySources = n.joinToString(","))
+                            },
+                            label = { Text(info.name) }
+                        )
+                    }
+                }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Switch(checked = f.commercialOnly, onCheckedChange = { f = f.copy(commercialOnly = it) })
+                Text("  الاستخدام التجاري مسموح فقط")
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Switch(checked = f.hideDownloaded, onCheckedChange = { f = f.copy(hideDownloaded = it) })
+                Text("  إخفاء ما نزّلته سابقًا")
+            }
+            OutlinedTextField(
+                value = f.exclude, onValueChange = { f = f.copy(exclude = it) }, singleLine = true,
+                label = { Text("استبعاد كلمات (افصل بفاصلة)") }, modifier = Modifier.fillMaxWidth()
+            )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(
                     onClick = { vm.applyFilters(f); vm.showFilters = false },

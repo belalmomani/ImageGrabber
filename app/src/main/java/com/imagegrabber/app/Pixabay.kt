@@ -30,6 +30,7 @@ class PixabaySource(private val pool: KeyPool) : ImageSource {
                 filters.order?.let { addQueryParameter("order", it) }
                 if (filters.editorsChoice) addQueryParameter("editors_choice", "true")
                 if (filters.minWidth > 0) addQueryParameter("min_width", filters.minWidth.toString())
+                if (filters.minHeight > 0) addQueryParameter("min_height", filters.minHeight.toString())
             }
             .build()
         val res = Http.get(url)
